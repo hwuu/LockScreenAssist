@@ -5,13 +5,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "C:\\Users\\hwuu\\.ohos\\config\\default_LockScreenAssist_ZDONSDk3seHuJIYNXL7en64V75c20YnbDHCEkPzYcqg=.cer",
+          "certpath": "C:\\Users\\hwuu\\.ohos\\config\\default_LockScreenAssist_UGeJGscrFc9AclTHBOI8zEUEg1rIV_2I5IEynjJZSX8=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001A111B087DA9E4894F1F237B5E5C6D23693F967A5E554E81CF6148B32BBBAEDD0C6F12778F45CF",
-          "profile": "C:\\Users\\hwuu\\.ohos\\config\\default_LockScreenAssist_ZDONSDk3seHuJIYNXL7en64V75c20YnbDHCEkPzYcqg=.p7b",
+          "keyPassword": "0000001B9F2A8E8199BDBE03B76A4DE36C460FA077EABEBE9C94DEF00990FE2CCCF7C97BCB3001A44C8C75",
+          "profile": "C:\\Users\\hwuu\\.ohos\\config\\default_LockScreenAssist_UGeJGscrFc9AclTHBOI8zEUEg1rIV_2I5IEynjJZSX8=.p7b",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\hwuu\\.ohos\\config\\default_LockScreenAssist_ZDONSDk3seHuJIYNXL7en64V75c20YnbDHCEkPzYcqg=.p12",
-          "storePassword": "0000001A9CAB81D4DFB68AD1DA8A0AD05E30B6EE4721A78B0FA2CB3553AF8FC2FBFA117C3EDAD637C405"
+          "storeFile": "C:\\Users\\hwuu\\.ohos\\config\\default_LockScreenAssist_UGeJGscrFc9AclTHBOI8zEUEg1rIV_2I5IEynjJZSX8=.p12",
+          "storePassword": "0000001BD2DA9A11A353525517724814298300305EF19372ACED635CDB202E09395AFC9674198184FBAFE6"
         }
       }
     ],

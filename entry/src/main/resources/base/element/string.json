@@ -31,6 +31,14 @@
     {
       "name": "notification_permission_reason",
       "value": "Used to control notifications for lock screen assistance features"
+    },
+    {
+      "name": "write_media_permission_reason",
+      "value": "Used to save wallpaper images to photo gallery"
+    },
+    {
+      "name": "read_media_permission_reason",
+      "value": "Used to access saved wallpaper images from photo gallery"
     }
   ]
 }

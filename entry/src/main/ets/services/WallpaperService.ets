@@ -224,25 +224,9 @@ export class WallpaperService {
     return filePath;
   }
 
-  // 应用壁纸到系统锁屏
-  static async applyWallpaper(wallpaper: GeneratedWallpaper): Promise<boolean> {
-    try {
-      // 在HarmonyOS中，设置锁屏壁纸需要特殊权限
-      // 这里应该调用系统API来设置壁纸
-      console.log(`Applying wallpaper: ${wallpaper.imagePath}`);
-      
-      // 保存当前壁纸信息
-      await WallpaperService.saveCurrentWallpaper(wallpaper);
-      
-      return true;
-    } catch (error) {
-      console.error('Failed to apply wallpaper:', error);
-      return false;
-    }
-  }
 
-  // 保存当前壁纸信息
-  private static async saveCurrentWallpaper(wallpaper: GeneratedWallpaper): Promise<void> {
+  // 保存当前壁纸信息 (公开方法供外部调用)
+  static async saveCurrentWallpaper(wallpaper: GeneratedWallpaper): Promise<void> {
     // 在实际应用中应该使用Preferences API存储
     console.log('Current wallpaper saved:', wallpaper);
   }

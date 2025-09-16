@@ -1,3 +1,5 @@
+_helper*.txt
+
 # HarmonyOS / 鸿蒙开发相关
 /node_modules
 /oh_modules
