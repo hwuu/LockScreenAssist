@@ -1,0 +1,157 @@
+// 诗经精选片段数据管理
+export interface Quote {
+  text: string;
+  author?: string;
+  category: string;
+  season?: string;
+  weather?: string;
+  source?: string;
+}
+
+export class QuoteData {
+  private static quotes: Quote[] = [
+    // 爱情与情感
+    { text: "关关雎鸠，在河之洲。窈窕淑女，君子好逑。", category: "爱情", source: "《诗经·周南·关雎》" },
+    { text: "求之不得，寤寐思服。悠哉悠哉，辗转反侧。", category: "爱情", source: "《诗经·周南·关雎》" },
+    { text: "桃之夭夭，灼灼其华。之子于归，宜其室家。", category: "爱情", season: "春", source: "《诗经·周南·桃夭》" },
+    { text: "蒹葭苍苍，白露为霜。所谓伊人，在水一方。", category: "思念", season: "秋", weather: "cold", source: "《诗经·秦风·蒹葭》" },
+    { text: "溯洄从之，道阻且长。溯游从之，宛在水中央。", category: "思念", source: "《诗经·秦风·蒹葭》" },
+    { text: "子衿青青，悠悠我心。纵我不往，子宁不嗣音。", category: "思念", source: "《诗经·郑风·子衿》" },
+    { text: "一日不见，如三秋兮。", category: "思念", source: "《诗经·王风·采葛》" },
+    { text: "死生契阔，与子成说。执子之手，与子偕老。", category: "爱情", source: "《诗经·邶风·击鼓》" },
+    { text: "愿言思伯，甘心首疾。", category: "爱情", source: "《诗经·卫风·伯兮》" },
+    { text: "有美一人，清扬婉兮。邂逅相遇，适我愿兮。", category: "爱情", source: "《诗经·郑风·野有蔓草》" },
+
+    // 自然与季节
+    { text: "春日迟迟，卉木萋萋。仓庚喈喈，采蘩祁祁。", category: "自然", season: "春", source: "《诗经·豳风·七月》" },
+    { text: "四月维夏，六月徂暑。", category: "自然", season: "夏", source: "《诗经·小雅·四月》" },
+    { text: "秋日凄凄，百卉具腓。乱离瘼矣，爰其适归。", category: "自然", season: "秋", source: "《诗经·小雅·四月》" },
+    { text: "雨雪霏霏，见晛曰消。莫肯下遗，式救斯民。", category: "自然", season: "冬", weather: "snowy", source: "《诗经·小雅·雨无正》" },
+    { text: "昔我往矣，杨柳依依。今我来思，雨雪霏霏。", category: "离别", season: "冬", weather: "snowy", source: "《诗经·小雅·采薇》" },
+    { text: "野有蔓草，零露溥兮。有美一人，婉如清扬。", category: "自然", weather: "sunny", source: "《诗经·郑风·野有蔓草》" },
+    { text: "彼采萧兮，一日不见，如三秋兮。", category: "思念", season: "秋", source: "《诗经·王风·采葛》" },
+    { text: "七月流火，九月授衣。", category: "时节", season: "秋", source: "《诗经·豳风·七月》" },
+    { text: "青青子衿，悠悠我心。", category: "思念", source: "《诗经·郑风·子衿》" },
+    { text: "东门之杨，其叶牂牂。昏以为期，明星煌煌。", category: "约会", source: "《诗经·陈风·东门之杨》" },
+
+    // 离别与思乡
+    { text: "行道迟迟，载渴载饥。我心伤悲，莫知我哀。", category: "离别", source: "《诗经·小雅·采薇》" },
+    { text: "维桑与梓，必恭敬止。靡瞻匪父，靡依匪母。", category: "思乡", source: "《诗经·小雅·小弁》" },
+    { text: "式微式微，胡不归。微君之故，胡为乎中露。", category: "思乡", source: "《诗经·邶风·式微》" },
+    { text: "女曰鸡鸣，士曰昧旦。子兴视夜，明星有烂。", category: "生活", source: "《诗经·郑风·女曰鸡鸣》" },
+    { text: "投我以木瓜，报之以琼琚。匪报也，永以为好也。", category: "友情", source: "《诗经·卫风·木瓜》" },
+    { text: "投我以木桃，报之以琼瑶。匪报也，永以为好也。", category: "友情", source: "《诗经·卫风·木瓜》" },
+    { text: "绸缪束薪，三星在天。今夕何夕，见此良人。", category: "爱情", source: "《诗经·唐风·绸缪》" },
+    { text: "河水洋洋，北流活活。施罛濊濊，鳣鲔发发。", category: "自然", source: "《诗经·卫风·河广》" },
+    { text: "谁谓河广，一苇杭之。谁谓宋远，跂予望之。", category: "思念", source: "《诗经·卫风·河广》" },
+    { text: "静女其姝，俟我于城隅。爱而不见，搔首踟蹰。", category: "爱情", source: "《诗经·邶风·静女》" },
+
+    // 品德与修养
+    { text: "如切如磋，如琢如磨。", category: "修养", source: "《诗经·卫风·淇奥》" },
+    { text: "瞻彼淇奥，绿竹猗猗。有匪君子，如切如磋。", category: "修养", source: "《诗经·卫风·淇奥》" },
+    { text: "温温恭人，如集于木。惴惴小心，如临于谷。", category: "修养", source: "《诗经·小雅·小旻》" },
+    { text: "战战兢兢，如临深渊，如履薄冰。", category: "谨慎", source: "《诗经·小雅·小旻》" },
+    { text: "他山之石，可以攻玉。", category: "学习", source: "《诗经·小雅·鹤鸣》" },
+    { text: "鹤鸣于九皋，声闻于野。鱼潜在渊，或在于渚。", category: "哲理", source: "《诗经·小雅·鹤鸣》" },
+    { text: "投我以桃，报之以李。", category: "礼仪", source: "《诗经·大雅·抑》" },
+    { text: "诲尔谆谆，听我藐藐。", category: "教育", source: "《诗经·大雅·抑》" },
+    { text: "匪风发兮，匪车偈兮。顾瞻周道，中心怛兮。", category: "忧国", source: "《诗经·邶风·匪风》" },
+    { text: "言者无罪，闻者足戒。", category: "批评", source: "《诗经·大序》" },
+
+    // 劳动与生活
+    { text: "十月蟋蟀入我床下。穹窒熏鼠，塞向墐户。", category: "生活", season: "秋", source: "《诗经·豳风·七月》" },
+    { text: "二之日凿冰冲冲，三之日纳于凌阴。", category: "劳动", season: "冬", source: "《诗经·豳风·七月》" },
+    { text: "春日载阳，有鸣仓庚。女执懿筐，遵彼微行。", category: "劳动", season: "春", source: "《诗经·豳风·七月》" },
+    { text: "采采卷耳，不盈顷筐。嗟我怀人，寘彼周行。", category: "劳动", source: "《诗经·周南·卷耳》" },
+    { text: "参差荇菜，左右流之。窈窕淑女，寤寐求之。", category: "劳动", source: "《诗经·周南·关雎》" },
+    { text: "采采芣苢，薄言采之。采采芣苢，薄言有之。", category: "劳动", source: "《诗经·周南·芣苢》" },
+    { text: "南有乔木，不可休思。汉有游女，不可求思。", category: "哲理", source: "《诗经·周南·汝坟》" },
+    { text: "无衣无褐，何以卒岁。", category: "生活", season: "冬", source: "《诗经·豳风·七月》" },
+    { text: "女心伤悲，殆及公子同归。", category: "婚姻", source: "《诗经·召南·摽有梅》" },
+    { text: "摽有梅，其实七兮。求我庶士，迨其吉兮。", category: "婚姻", source: "《诗经·召南·摽有梅》" },
+
+    // 政治与社会
+    { text: "民之秉彝，好是懿德。", category: "品德", source: "《诗经·大雅·烝民》" },
+    { text: "天生烝民，有物有则。民之秉彝，好是懿德。", category: "品德", source: "《诗经·大雅·烝民》" },
+    { text: "高山仰止，景行行止。", category: "敬仰", source: "《诗经·小雅·车舝》" },
+    { text: "既明且哲，以保其身。", category: "智慧", source: "《诗经·大雅·烝民》" },
+    { text: "靡不有初，鲜克有终。", category: "恒心", source: "《诗经·大雅·荡》" },
+    { text: "多行不义必自毙。", category: "正义", source: "《诗经·小雅·巧言》" },
+    { text: "维号斯言，有伦有脊。", category: "言行", source: "《诗经·大雅·假乐》" },
+    { text: "乐只君子，万寿无疆。", category: "祝福", source: "《诗经·小雅·南山有台》" },
+    { text: "如月之恒，如日之升。", category: "祝福", source: "《诗经·小雅·天保》" },
+    { text: "如南山之寿，不骞不崩。", category: "祝福", source: "《诗经·小雅·天保》" },
+
+    // 友谊与人际
+    { text: "嘤其鸣矣，求其友声。", category: "友谊", source: "《诗经·小雅·伐木》" },
+    { text: "既见君子，我心则喜。", category: "友谊", source: "《诗经·小雅·菁菁者莪》" },
+    { text: "有匪君子，如金如锡，如圭如璧。", category: "品格", source: "《诗经·卫风·淇奥》" },
+    { text: "巧言如簧，颜之厚矣。", category: "讽刺", source: "《诗经·小雅·巧言》" },
+    { text: "他人有心，予忖度之。", category: "理解", source: "《诗经·小雅·巧言》" },
+    { text: "知我者谓我心忧，不知我者谓我何求。", category: "理解", source: "《诗经·王风·黍离》" },
+    { text: "彼黍离离，彼稷之苗。行迈靡靡，中心摇摇。", category: "感怀", source: "《诗经·王风·黍离》" },
+    { text: "采葛采葛，首阳之巅。人之为言，苟亦无信。", category: "诚信", source: "《诗经·王风·采葛》" },
+    { text: "终风且暴，顾我则笑。谑浪笑敖，中心是悼。", category: "情感", source: "《诗经·邶风·终风》" },
+    { text: "邂逅相遇，与子偕臧。", category: "友谊", source: "《诗经·郑风·野有蔓草》" },
+
+    // 感慨与哲理
+    { text: "昔我往矣，杨柳依依。今我来思，雨雪霏霏。", category: "时光", season: "冬", weather: "snowy", source: "《诗经·小雅·采薇》" },
+    { text: "人生如寄，多忧何为。", category: "人生", source: "《诗经·唐风·山有枢》" },
+    { text: "山有木兮木有枝，心悦君兮君不知。", category: "暗恋", source: "《诗经·越人歌》" },
+    { text: "皎皎白驹，食我场苗。縶之维之，以永今朝。", category: "惜时", source: "《诗经·小雅·白驹》" },
+    { text: "所谓伊人，在水一方。", category: "思念", source: "《诗经·秦风·蒹葭》" },
+    { text: "绸缪束楚，三星在户。今夕何夕，见此粲者。", category: "美好", source: "《诗经·唐风·绸缪》" },
+    { text: "月出皎兮，佼人僚兮。舒窈纠兮，劳心悄兮。", category: "思念", source: "《诗经·陈风·月出》" },
+    { text: "关关雎鸠，在河之洲。", category: "和谐", source: "《诗经·周南·关雎》" },
+    { text: "风雨如晦，鸡鸣不已。既见君子，云胡不喜。", category: "坚持", weather: "rainy", source: "《诗经·郑风·风雨》" },
+    { text: "青青子佩，悠悠我思。纵我不往，子宁不来。", category: "思念", source: "《诗经·郑风·子衿》" },
+
+    // 自然景物
+    { text: "呦呦鹿鸣，食野之苹。我有嘉宾，鼓瑟吹笙。", category: "宴客", source: "《诗经·小雅·鹿鸣》" },
+    { text: "泽陂汇汇，禾役役。", category: "自然", source: "《诗经·陈风·泽陂》" },
+    { text: "鱼在在藻，有颁其首。王在在镐，岂乐饮酒。", category: "自然", source: "《诗经·小雅·鱼藻》" },
+    { text: "维南有箕，不可以簸扬。维北有斗，不可以挹酒浆。", category: "哲理", source: "《诗经·小雅·大东》" },
+    { text: "硕鼠硕鼠，无食我黍。三岁贯女，莫我肯顾。", category: "愤懑", source: "《诗经·魏风·硕鼠》" },
+    { text: "坎坎伐檀兮，置之河之干兮。河水清且涟猗。", category: "劳动", source: "《诗经·魏风·伐檀》" },
+    { text: "不素餐兮！", category: "勤俭", source: "《诗经·魏风·伐檀》" },
+    { text: "采采芣苢，薄言掇之。采采芣苢，薄言捋之。", category: "劳动", source: "《诗经·周南·芣苢》" },
+    { text: "葛之覃兮，施于中谷，维叶萋萋。", category: "自然", source: "《诗经·周南·葛覃》" },
+    { text: "螽斯羽，诜诜兮。宜尔子孙，振振兮。", category: "祝福", source: "《诗经·周南·螽斯》" },
+
+    // 婚恋家庭
+    { text: "桃之夭夭，灼灼其华。之子于归，宜其室家。", category: "婚姻", season: "春", source: "《诗经·周南·桃夭》" },
+    { text: "宜其室家，宜其家人。", category: "家庭", source: "《诗经·周南·桃夭》" },
+    { text: "父兮生我，母兮鞠我。抚我畜我，长我育我。", category: "感恩", source: "《诗经·小雅·蓼莪》" },
+    { text: "欲报之德，昊天罔极。", category: "感恩", source: "《诗经·小雅·蓼莪》" },
+    { text: "凯风自南，吹彼棘心。棘心夭夭，母氏劬劳。", category: "母爱", source: "《诗经·邶风·凯风》" },
+    { text: "哀哀父母，生我劬劳。", category: "感恩", source: "《诗经·小雅·蓼莪》" },
+    { text: "兄弟阋于墙，外御其务。", category: "兄弟", source: "《诗经·小雅·棠棣》" },
+    { text: "常棣之华，鄂不韡韡。凡今之人，莫如兄弟。", category: "兄弟", source: "《诗经·小雅·棠棣》" },
+    { text: "死生契阔，与子成说。", category: "承诺", source: "《诗经·邶风·击鼓》" },
+    { text: "琴瑟在御，莫不静好。", category: "和谐", source: "《诗经·郑风·女曰鸡鸣》" }
+  ];
+
+  static getAllQuotes(): Quote[] {
+    return QuoteData.quotes;
+  }
+
+  static getRandomQuote(): Quote {
+    return QuoteData.quotes[Math.floor(Math.random() * QuoteData.quotes.length)];
+  }
+
+  static getQuotesByCategory(category: string): Quote[] {
+    return QuoteData.quotes.filter(quote => quote.category === category);
+  }
+
+  static getQuotesBySeason(season: string): Quote[] {
+    return QuoteData.quotes.filter(quote => !quote.season || quote.season === season);
+  }
+
+  static getQuotesByWeather(weather: string): Quote[] {
+    return QuoteData.quotes.filter(quote => !quote.weather || quote.weather === weather);
+  }
+
+  static addQuote(quote: Quote): void {
+    QuoteData.quotes.push(quote);
+  }
+}

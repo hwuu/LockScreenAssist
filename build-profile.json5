@@ -1,0 +1,56 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\hwuu\\.ohos\\config\\default_LockScreenAssist_ZDONSDk3seHuJIYNXL7en64V75c20YnbDHCEkPzYcqg=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001A111B087DA9E4894F1F237B5E5C6D23693F967A5E554E81CF6148B32BBBAEDD0C6F12778F45CF",
+          "profile": "C:\\Users\\hwuu\\.ohos\\config\\default_LockScreenAssist_ZDONSDk3seHuJIYNXL7en64V75c20YnbDHCEkPzYcqg=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\hwuu\\.ohos\\config\\default_LockScreenAssist_ZDONSDk3seHuJIYNXL7en64V75c20YnbDHCEkPzYcqg=.p12",
+          "storePassword": "0000001A9CAB81D4DFB68AD1DA8A0AD05E30B6EE4721A78B0FA2CB3553AF8FC2FBFA117C3EDAD637C405"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "5.0.5(17)",
+        "compatibleSdkVersion": "5.0.5(17)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug",
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

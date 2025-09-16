@@ -1,0 +1,36 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "label"
+    },
+    {
+      "name": "wallpaper_permission_reason",
+      "value": "Used to set wallpaper for lock screen assistance features"
+    },
+    {
+      "name": "internet_permission_reason",
+      "value": "Used to access network resources for application functionality"
+    },
+    {
+      "name": "network_info_permission_reason",
+      "value": "Used to get network information for connectivity features"
+    },
+    {
+      "name": "background_permission_reason",
+      "value": "Used to keep the application running in background for lock screen assistance"
+    },
+    {
+      "name": "notification_permission_reason",
+      "value": "Used to control notifications for lock screen assistance features"
+    }
+  ]
+}

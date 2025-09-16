@@ -1,0 +1,233 @@
+// 壁纸生成和管理服务
+import { Quote } from '../common/QuoteData';
+
+export interface WallpaperStyle {
+  backgroundColor: string;
+  gradientColors?: string[];
+  textColor: string;
+  fontSize: number;
+  fontFamily: string;
+  textAlign: string;
+  backgroundOpacity: number;
+}
+
+export interface GeneratedWallpaper {
+  quote: Quote;
+  style: WallpaperStyle;
+  imagePath?: string;
+  createdAt: Date;
+}
+
+export class WallpaperService {
+  private static readonly WALLPAPER_STORAGE_KEY = "current_wallpaper";
+
+  // 生成壁纸样式
+  static generateWallpaperStyle(quote: Quote): WallpaperStyle {
+    const textLength = quote.text.length;
+    const isLongText = textLength > 30;
+    
+    // 根据名言类型和长度自动调整样式
+    let style: WallpaperStyle = {
+      backgroundColor: '#1a1a2e',
+      textColor: '#ffffff',
+      fontSize: this.calculateOptimalFontSize(textLength),
+      fontFamily: 'HarmonyOS Sans',
+      textAlign: 'center',
+      backgroundOpacity: 0.8
+    };
+
+    // 根据类别调整配色方案
+    switch (quote.category) {
+      case '励志':
+        style.gradientColors = ['#667eea', '#764ba2'];
+        style.textColor = '#ffffff';
+        break;
+      case '智慧':
+        style.gradientColors = ['#f093fb', '#f5576c'];
+        style.textColor = '#ffffff';
+        break;
+      case '诗词':
+        style.gradientColors = ['#4facfe', '#00f2fe'];
+        style.textColor = '#ffffff';
+        break;
+      case '哲理':
+        style.gradientColors = ['#43e97b', '#38f9d7'];
+        style.textColor = '#2c3e50';
+        break;
+      default:
+        style.gradientColors = ['#667eea', '#764ba2'];
+        style.textColor = '#ffffff';
+    }
+
+    // 根据季节调整色调
+    if (quote.season) {
+      style = this.adjustStyleBySeason(style, quote.season);
+    }
+
+    // 根据天气调整色调
+    if (quote.weather) {
+      style = this.adjustStyleByWeather(style, quote.weather);
+    }
+
+    return style;
+  }
+
+  // 计算最佳字体大小
+  private static calculateOptimalFontSize(textLength: number): number {
+    if (textLength <= 15) return 48;
+    if (textLength <= 25) return 42;
+    if (textLength <= 35) return 36;
+    if (textLength <= 50) return 32;
+    if (textLength <= 70) return 28;
+    return 24;
+  }
+
+  // 根据季节调整样式
+  private static adjustStyleBySeason(style: WallpaperStyle, season: string): WallpaperStyle {
+    switch (season) {
+      case '春':
+        style.gradientColors = ['#a8e6cf', '#dcedc8'];
+        style.textColor = '#2e7d32';
+        break;
+      case '夏':
+        style.gradientColors = ['#ffd54f', '#ff8a65'];
+        style.textColor = '#d84315';
+        break;
+      case '秋':
+        style.gradientColors = ['#ffb74d', '#ff8a65'];
+        style.textColor = '#5d4037';
+        break;
+      case '冬':
+        style.gradientColors = ['#90caf9', '#e1f5fe'];
+        style.textColor = '#0277bd';
+        break;
+    }
+    return style;
+  }
+
+  // 根据天气调整样式
+  private static adjustStyleByWeather(style: WallpaperStyle, weather: string): WallpaperStyle {
+    switch (weather) {
+      case 'sunny':
+        style.gradientColors = ['#ffd54f', '#ffecb3'];
+        style.textColor = '#f57f17';
+        break;
+      case 'cloudy':
+        style.gradientColors = ['#90a4ae', '#cfd8dc'];
+        style.textColor = '#37474f';
+        break;
+      case 'rainy':
+        style.gradientColors = ['#64b5f6', '#90caf9'];
+        style.textColor = '#0d47a1';
+        break;
+      case 'snowy':
+        style.gradientColors = ['#e8eaf6', '#f3e5f5'];
+        style.textColor = '#4527a0';
+        break;
+      case 'hot':
+        style.gradientColors = ['#ff5722', '#ff9800'];
+        style.textColor = '#ffffff';
+        break;
+      case 'cold':
+        style.gradientColors = ['#3f51b5', '#7986cb'];
+        style.textColor = '#ffffff';
+        break;
+    }
+    return style;
+  }
+
+  // 生成壁纸
+  static async generateWallpaper(quote: Quote): Promise<GeneratedWallpaper> {
+    const style = this.generateWallpaperStyle(quote);
+    
+    const wallpaper: GeneratedWallpaper = {
+      quote,
+      style,
+      createdAt: new Date()
+    };
+
+    // 这里应该生成实际的图片文件
+    // 在HarmonyOS中可以使用Canvas API或者图片处理库
+    wallpaper.imagePath = await this.generateImageFile(wallpaper);
+
+    return wallpaper;
+  }
+
+  // 生成图片文件（模拟实现）
+  private static async generateImageFile(wallpaper: GeneratedWallpaper): Promise<string> {
+    // 在实际实现中，这里应该：
+    // 1. 创建Canvas
+    // 2. 绘制渐变背景
+    // 3. 绘制文字
+    // 4. 保存为图片文件
+    // 5. 返回文件路径
+    
+    const timestamp = Date.now();
+    const fileName = `quote_wallpaper_${timestamp}.png`;
+    const filePath = `wallpapers/${fileName}`;
+    
+    // 模拟生成过程
+    console.log(`Generating wallpaper: ${fileName}`);
+    console.log(`Quote: ${wallpaper.quote.text}`);
+    console.log(`Style: ${JSON.stringify(wallpaper.style)}`);
+    
+    return filePath;
+  }
+
+  // 应用壁纸到系统锁屏
+  static async applyWallpaper(wallpaper: GeneratedWallpaper): Promise<boolean> {
+    try {
+      // 在HarmonyOS中，设置锁屏壁纸需要特殊权限
+      // 这里应该调用系统API来设置壁纸
+      console.log(`Applying wallpaper: ${wallpaper.imagePath}`);
+      
+      // 保存当前壁纸信息
+      await this.saveCurrentWallpaper(wallpaper);
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to apply wallpaper:', error);
+      return false;
+    }
+  }
+
+  // 保存当前壁纸信息
+  private static async saveCurrentWallpaper(wallpaper: GeneratedWallpaper): Promise<void> {
+    // 在实际应用中应该使用Preferences API存储
+    console.log('Current wallpaper saved:', wallpaper);
+  }
+
+  // 获取当前壁纸
+  static async getCurrentWallpaper(): Promise<GeneratedWallpaper | null> {
+    try {
+      // 从存储中读取当前壁纸信息
+      // 这里返回模拟数据
+      return null;
+    } catch (error) {
+      console.error('Failed to get current wallpaper:', error);
+      return null;
+    }
+  }
+
+  // 预览壁纸效果
+  static createWallpaperPreview(wallpaper: GeneratedWallpaper): string {
+    // 返回CSS样式字符串，用于UI预览
+    const style = wallpaper.style;
+    
+    if (style.gradientColors && style.gradientColors.length >= 2) {
+      return `linear-gradient(135deg, ${style.gradientColors[0]} 0%, ${style.gradientColors[1]} 100%)`;
+    } else {
+      return style.backgroundColor;
+    }
+  }
+
+  // 清理旧的壁纸文件
+  static async cleanupOldWallpapers(keepCount: number = 10): Promise<void> {
+    try {
+      // 清理超过指定数量的旧壁纸文件
+      console.log(`Cleaning up old wallpapers, keeping ${keepCount} recent files`);
+    } catch (error) {
+      console.error('Failed to cleanup old wallpapers:', error);
+    }
+  }
+}
