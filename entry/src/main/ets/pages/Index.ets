@@ -41,9 +41,19 @@ struct Index {
   async aboutToAppear() {
     await this.getScreenRatio();
     await this.loadConfig();
+    await this.loadQuoteSource();
     await this.loadCurrentWallpaper();
     await this.updatePreview();
     this.startHintTimer();
+  }
+
+  async loadQuoteSource() {
+    try {
+      const QuoteDataModule = await import('../common/QuoteData');
+      await QuoteDataModule.QuoteData.loadQuoteSource();
+    } catch (error) {
+      console.error('Failed to load quote source in Index:', error);
+    }
   }
 
   // 启动提示文字定时器

@@ -1,4 +1,4 @@
-// 诗经精选片段数据管理
+// 名言数据管理
 export interface Quote {
   text: string;
   author?: string;
@@ -8,8 +8,13 @@ export interface Quote {
   source?: string;
 }
 
+export enum QuoteSource {
+  SHIJING = 'shijing',
+  MAOZEDONG = 'maozedong'
+}
+
 export class QuoteData {
-  private static quotes: Quote[] = [
+  private static shijingQuotes: Quote[] = [
     // 爱情与情感
     { text: "关关雎鸠，在河之洲。窈窕淑女，君子好逑。", category: "爱情", source: "《诗经·周南·关雎》" },
     { text: "求之不得，寤寐思服。悠哉悠哉，辗转反侧。", category: "爱情", source: "《诗经·周南·关雎》" },
@@ -131,27 +136,198 @@ export class QuoteData {
     { text: "琴瑟在御，莫不静好。", category: "和谐", source: "《诗经·郑风·女曰鸡鸣》" }
   ];
 
+  private static maozedongQuotes: Quote[] = [
+    // 论持久战
+    { text: "战争的伟力之最深厚的根源，存在于民众之中。", author: "毛泽东", category: "战争", source: "《论持久战》" },
+    { text: "兵民是胜利之本。", author: "毛泽东", category: "战争", source: "《论持久战》" },
+    { text: "武器是战争的重要的因素，但不是决定的因素，决定的因素是人不是物。", author: "毛泽东", category: "战争", source: "《论持久战》" },
+    { text: "战略上要藐视敌人，战术上要重视敌人。", author: "毛泽东", category: "战略", source: "《论持久战》" },
+    { text: "敌进我退，敌驻我扰，敌疲我打，敌退我追。", author: "毛泽东", category: "战略", source: "《中国革命战争的战略问题》" },
+    { text: "打得赢就打，打不赢就走。", author: "毛泽东", category: "战略", source: "《论持久战》" },
+    { text: "集中优势兵力，各个歼灭敌人。", author: "毛泽东", category: "战略", source: "《中国革命战争的战略问题》" },
+    { text: "我们的战略是以一当十，我们的战术是以十当一。", author: "毛泽东", category: "战略", source: "《论持久战》" },
+    { text: "保存自己，消灭敌人，这是战争的根本法则。", author: "毛泽东", category: "战争", source: "《中国革命战争的战略问题》" },
+    { text: "一切反动派都是纸老虎。", author: "毛泽东", category: "斗争", source: "《和美国记者安娜·路易斯·斯特朗的谈话》" },
+
+    // 实践论
+    { text: "实践是检验真理的唯一标准。", author: "毛泽东", category: "真理", source: "《实践论》" },
+    { text: "人的正确思想是从哪里来的？是从天上掉下来的吗？不是。是自己头脑里固有的吗？不是。人的正确思想，只能从社会实践中来。", author: "毛泽东", category: "认识", source: "《实践论》" },
+    { text: "认识从实践始，经过实践得到了理论的认识，还须再回到实践去。", author: "毛泽东", category: "实践", source: "《实践论》" },
+    { text: "通过实践而发现真理，又通过实践而证实真理和发展真理。", author: "毛泽东", category: "真理", source: "《实践论》" },
+    { text: "感觉只解决现象问题，理论才解决本质问题。", author: "毛泽东", category: "认识", source: "《实践论》" },
+    { text: "理论的基础是实践，又转过来为实践服务。", author: "毛泽东", category: "理论", source: "《实践论》" },
+    { text: "人们的认识能力是无限的。", author: "毛泽东", category: "认识", source: "《实践论》" },
+    { text: "马克思主义者认为，只有人们的社会实践，才是人们对于外界认识的真理性的标准。", author: "毛泽东", category: "真理", source: "《实践论》" },
+
+    // 矛盾论
+    { text: "矛盾是普遍的，绝对的，它存在于一切事物发展的全过程中。", author: "毛泽东", category: "矛盾", source: "《矛盾论》" },
+    { text: "对立统一规律是宇宙的根本规律。", author: "毛泽东", category: "矛盾", source: "《矛盾论》" },
+    { text: "一切过程的开始阶段，是简单的、感性的、片面的。", author: "毛泽东", category: "发展", source: "《矛盾论》" },
+    { text: "主要的矛盾和非主要的矛盾、主要的矛盾方面和非主要的矛盾方面是可以互相转化的。", author: "毛泽东", category: "矛盾", source: "《矛盾论》" },
+    { text: "具体地分析具体情况，这是马克思主义的最本质的东西，马克思主义的活的灵魂。", author: "毛泽东", category: "方法", source: "《矛盾论》" },
+    { text: "在复杂的事物的发展过程中，有许多的矛盾存在，其中必有一种是主要的矛盾。", author: "毛泽东", category: "矛盾", source: "《矛盾论》" },
+    { text: "质就是一事物区别于其他事物的内部规定性。", author: "毛泽东", category: "哲学", source: "《矛盾论》" },
+
+    // 为人民服务思想
+    { text: "为人民服务。", author: "毛泽东", category: "服务", source: "《为人民服务》" },
+    { text: "我们的共产党和共产党所领导的八路军、新四军，是革命的队伍。我们这个队伍完全是为着解放人民的，是彻底地为人民的利益工作的。", author: "毛泽东", category: "服务", source: "《为人民服务》" },
+    { text: "人总是要死的，但死的意义有不同。中国古时候有个文学家叫做司马迁的说过：人固有一死，或重于泰山，或轻于鸿毛。", author: "毛泽东", category: "人生", source: "《为人民服务》" },
+    { text: "我们都是来自五湖四海，为了一个共同的革命目标，走到一起来了。", author: "毛泽东", category: "团结", source: "《为人民服务》" },
+    { text: "因为我们是为人民服务的，所以，我们如果有缺点，就不怕别人批评指出。", author: "毛泽东", category: "批评", source: "《为人民服务》" },
+
+    // 群众路线
+    { text: "人民，只有人民，才是创造世界历史的动力。", author: "毛泽东", category: "人民", source: "《论联合政府》" },
+    { text: "群众是真正的英雄，而我们自己则往往是幼稚可笑的。", author: "毛泽东", category: "群众", source: "《农村调查的序言和跋》" },
+    { text: "从群众中来，到群众中去。", author: "毛泽东", category: "群众", source: "《关于领导方法的若干问题》" },
+    { text: "一切群众的实际生活问题，都是我们应当注意的问题。", author: "毛泽东", category: "群众", source: "《关心群众生活，注意工作方法》" },
+    { text: "我们应该深刻地注意群众生活的问题，从土地、劳动问题，到柴米油盐问题。", author: "毛泽东", category: "民生", source: "《关心群众生活，注意工作方法》" },
+    { text: "凡是需要群众参加的工作，如果没有群众的自觉和自愿，就会流于徒有形式而失败。", author: "毛泽东", category: "群众", source: "《组织起来》" },
+
+    // 调查研究
+    { text: "没有调查，就没有发言权。", author: "毛泽东", category: "调查", source: "《反对本本主义》" },
+    { text: "你要知道梨子的滋味，你就得变革梨子，亲口吃一吃。", author: "毛泽东", category: "实践", source: "《实践论》" },
+    { text: "要了解情况，唯一的方法是向社会作调查。", author: "毛泽东", category: "调查", source: "《反对本本主义》" },
+    { text: "不做正确的调查同样没有发言权。", author: "毛泽东", category: "调查", source: "《反对本本主义》" },
+    { text: "一切结论产生于调查情况的末尾，而不是在它的先头。", author: "毛泽东", category: "调查", source: "《反对本本主义》" },
+
+    // 革命意志
+    { text: "革命不是请客吃饭，不是做文章，不是绘画绣花，不能那样雅致，那样从容不迫，文质彬彬，那样温良恭俭让。", author: "毛泽东", category: "革命", source: "《湖南农民运动考察报告》" },
+    { text: "星星之火，可以燎原。", author: "毛泽东", category: "希望", source: "《星星之火，可以燎原》" },
+    { text: "枪杆子里面出政权。", author: "毛泽东", category: "政权", source: "《战争和战略问题》" },
+    { text: "政治是不流血的战争，战争是流血的政治。", author: "毛泽东", category: "政治", source: "《论持久战》" },
+    { text: "一个革命党就怕听不到人民的声音，最可怕的是鸦雀无声。", author: "毛泽东", category: "民主", source: "《在扩大的中央工作会议上的讲话》" },
+
+    // 学习与思考
+    { text: "学而时习之，不亦说乎。", author: "毛泽东", category: "学习", source: "《改造我们的学习》" },
+    { text: "好好学习，天天向上。", author: "毛泽东", category: "学习", source: "《对儿童的题词》" },
+    { text: "读书是学习，使用也是学习，而且是更重要的学习。", author: "毛泽东", category: "学习", source: "《中国革命战争的战略问题》" },
+    { text: "情况是在不断地变化，要使自己的思想适应新的情况，就得学习。", author: "毛泽东", category: "学习", source: "《在中国共产党全国宣传工作会议上的讲话》" },
+    { text: "学习的敌人是自己的满足，要认真学习一点东西，必须从不自满开始。", author: "毛泽东", category: "学习", source: "《中国共产党在民族战争中的地位》" },
+
+    // 自力更生
+    { text: "自己动手，丰衣足食。", author: "毛泽东", category: "自立", source: "《开展根据地的减租、生产和拥政爱民运动》" },
+    { text: "我们的方针要放在什么基点上？放在自己力量的基点上，叫做自力更生。", author: "毛泽东", category: "自立", source: "《抗日战争胜利后的时局和我们的方针》" },
+    { text: "人定胜天。", author: "毛泽东", category: "意志", source: "《实践论》" },
+    { text: "发扬勇敢战斗、不怕牺牲、不怕疲劳和连续作战的作风。", author: "毛泽东", category: "作风", source: "《中国人民解放军宣言》" },
+
+    // 团结合作
+    { text: "团结就是力量。", author: "毛泽东", category: "团结", source: "《论联合政府》" },
+    { text: "全世界人民团结起来，打败美国侵略者及其一切走狗！", author: "毛泽东", category: "团结", source: "《支持美国黑人反对美帝国主义种族歧视的正义斗争的声明》" },
+    { text: "中华民族有同自己的敌人血战到底的气概。", author: "毛泽东", category: "民族", source: "《论反对日本帝国主义的策略》" },
+    { text: "我们中华民族有同自己的敌人血战到底的气概，有在自力更生的基础上光复旧物的决心。", author: "毛泽东", category: "民族", source: "《论反对日本帝国主义的策略》" },
+
+    // 思想方法
+    { text: "事物是运动的，变化的，进步的。", author: "毛泽东", category: "发展", source: "《矛盾论》" },
+    { text: "一分为二，对立统一。", author: "毛泽东", category: "方法", source: "《矛盾论》" },
+    { text: "要把事情做好，先要做人做好。", author: "毛泽东", category: "品格", source: "《为人民服务》" },
+    { text: "世界是你们的，也是我们的，但是归根结底是你们的。", author: "毛泽东", category: "青年", source: "《在莫斯科大学对中国留学生的讲话》" },
+    { text: "青年人朝气蓬勃，正在兴旺时期，好像早晨八九点钟的太阳。希望寄托在你们身上。", author: "毛泽东", category: "青年", source: "《在莫斯科大学对中国留学生的讲话》" },
+
+    // 建设与发展
+    { text: "备战、备荒、为人民。", author: "毛泽东", category: "建设", source: "《关于三线建设的指示》" },
+    { text: "自力更生为主，争取外援为辅。", author: "毛泽东", category: "建设", source: "《抗日战争胜利后的时局和我们的方针》" },
+    { text: "我们的教育方针，应该使受教育者在德育、智育、体育几方面都得到发展。", author: "毛泽东", category: "教育", source: "《关于正确处理人民内部矛盾的问题》" },
+    { text: "百花齐放，百家争鸣。", author: "毛泽东", category: "文化", source: "《关于正确处理人民内部矛盾的问题》" },
+
+    // 作风建设
+    { text: "务必使同志们继续地保持谦虚、谨慎、不骄、不躁的作风。", author: "毛泽东", category: "作风", source: "《在中国共产党第七届中央委员会第二次全体会议上的报告》" },
+    { text: "务必使同志们继续地保持艰苦奋斗的作风。", author: "毛泽东", category: "作风", source: "《在中国共产党第七届中央委员会第二次全体会议上的报告》" },
+    { text: "我们决不当李自成，我们都希望考个好成绩。", author: "毛泽东", category: "警醒", source: "《在中国共产党第七届中央委员会第二次全体会议上的报告》" },
+    { text: "批评和自我批评是一个政党强大的表现。", author: "毛泽东", category: "批评", source: "《论联合政府》" },
+
+    // 国际视野
+    { text: "中国人民从此站起来了！", author: "毛泽东", category: "独立", source: "《中国人民站起来了》" },
+    { text: "我们的朋友遍天下。", author: "毛泽东", category: "友谊", source: "《关于三个世界划分的理论》" },
+    { text: "帝国主义和一切反动派都是纸老虎。", author: "毛泽东", category: "斗争", source: "《和美国记者安娜·路易斯·斯特朗的谈话》" },
+    { text: "中国应当对于人类有较大的贡献。", author: "毛泽东", category: "贡献", source: "《纪念孙中山先生》" },
+
+    // 精神品质
+    { text: "下定决心，不怕牺牲，排除万难，去争取胜利。", author: "毛泽东", category: "意志", source: "《愚公移山》" },
+    { text: "世上无难事，只要肯登攀。", author: "毛泽东", category: "坚持", source: "《水调歌头·重上井冈山》" },
+    { text: "愚公移山，改造中国。", author: "毛泽东", category: "改造", source: "《愚公移山》" },
+    { text: "发扬革命传统，争取更大光荣。", author: "毛泽东", category: "传统", source: "《为人民服务》" },
+    { text: "虚心使人进步，骄傲使人落后。", author: "毛泽东", category: "品格", source: "《在中国共产党全国宣传工作会议上的讲话》" },
+    { text: "谦虚、谨慎、戒骄、戒躁。", author: "毛泽东", category: "品格", source: "《在中国共产党第七届中央委员会第二次全体会议上的报告》" },
+
+    // 时间与奋斗
+    { text: "一万年太久，只争朝夕。", author: "毛泽东", category: "时间", source: "《满江红·和郭沫若同志》" },
+    { text: "宜将剩勇追穷寇，不可沽名学霸王。", author: "毛泽东", category: "意志", source: "《七律·人民解放军占领南京》" },
+    { text: "数风流人物，还看今朝。", author: "毛泽东", category: "豪迈", source: "《沁园春·雪》" },
+    { text: "俱往矣，数风流人物，还看今朝。", author: "毛泽东", category: "豪迈", source: "《沁园春·雪》" },
+    { text: "雄关漫道真如铁，而今迈步从头越。", author: "毛泽东", category: "奋斗", source: "《忆秦娥·娄山关》" },
+    { text: "红军不怕远征难，万水千山只等闲。", author: "毛泽东", category: "意志", source: "《七律·长征》" },
+    { text: "更喜岷山千里雪，三军过后尽开颜。", author: "毛泽东", category: "乐观", source: "《七律·长征》" },
+
+    // 历史与现实
+    { text: "人民万岁！", author: "毛泽东", category: "人民", source: "《开国大典讲话》" },
+    { text: "独立自主，自力更生。", author: "毛泽东", category: "独立", source: "《抗日战争胜利后的时局和我们的方针》" },
+    { text: "实事求是。", author: "毛泽东", category: "作风", source: "《改造我们的学习》" },
+    { text: "古为今用，洋为中用。", author: "毛泽东", category: "学习", source: "《在中国共产党全国宣传工作会议上的讲话》" },
+    { text: "继往开来。", author: "毛泽东", category: "发展", source: "《新民主主义论》" }
+  ];
+
+  private static currentSource: QuoteSource = QuoteSource.MAOZEDONG;
+  private static readonly QUOTE_SOURCE_KEY = 'quote_source';
+
+  static async loadQuoteSource(): Promise<void> {
+    try {
+      // 在实际实现中应该使用Preferences API
+      // 这里先用localStorage模拟
+      const saved: string | null = globalThis.localStorage?.getItem?.(QuoteData.QUOTE_SOURCE_KEY) || null;
+      if (saved && Object.values(QuoteSource).includes(saved as QuoteSource)) {
+        QuoteData.currentSource = saved as QuoteSource;
+      }
+    } catch (error) {
+      console.error('Failed to load quote source:', error);
+    }
+  }
+
+  static async saveQuoteSource(source: QuoteSource): Promise<void> {
+    try {
+      QuoteData.currentSource = source;
+      // 在实际实现中应该使用Preferences API
+      // 这里先用localStorage模拟
+      globalThis.localStorage?.setItem?.(QuoteData.QUOTE_SOURCE_KEY, source);
+    } catch (error) {
+      console.error('Failed to save quote source:', error);
+    }
+  }
+
+  static setQuoteSource(source: QuoteSource): void {
+    QuoteData.currentSource = source;
+  }
+
+  static getQuoteSource(): QuoteSource {
+    return QuoteData.currentSource;
+  }
+
   static getAllQuotes(): Quote[] {
-    return QuoteData.quotes;
+    return QuoteData.currentSource === QuoteSource.SHIJING ?
+      QuoteData.shijingQuotes : QuoteData.maozedongQuotes;
   }
 
   static getRandomQuote(): Quote {
-    return QuoteData.quotes[Math.floor(Math.random() * QuoteData.quotes.length)];
+    const quotes = QuoteData.getAllQuotes();
+    return quotes[Math.floor(Math.random() * quotes.length)];
   }
 
   static getQuotesByCategory(category: string): Quote[] {
-    return QuoteData.quotes.filter(quote => quote.category === category);
+    return QuoteData.getAllQuotes().filter(quote => quote.category === category);
   }
 
   static getQuotesBySeason(season: string): Quote[] {
-    return QuoteData.quotes.filter(quote => !quote.season || quote.season === season);
+    return QuoteData.getAllQuotes().filter(quote => !quote.season || quote.season === season);
   }
 
   static getQuotesByWeather(weather: string): Quote[] {
-    return QuoteData.quotes.filter(quote => !quote.weather || quote.weather === weather);
+    return QuoteData.getAllQuotes().filter(quote => !quote.weather || quote.weather === weather);
   }
 
   static addQuote(quote: Quote): void {
-    QuoteData.quotes.push(quote);
+    if (QuoteData.currentSource === QuoteSource.SHIJING) {
+      QuoteData.shijingQuotes.push(quote);
+    } else {
+      QuoteData.maozedongQuotes.push(quote);
+    }
   }
 }

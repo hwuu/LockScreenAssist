@@ -1,10 +1,17 @@
 import { ScheduleConfig, WallpaperConfig, SelectionAlgorithm } from '../common/ScheduleConfig';
+import { QuoteData, QuoteSource } from '../common/QuoteData';
 import { router } from '@kit.ArkUI';
 
 // 定义选项接口
 interface OptionItem {
   label: string;
   value: SelectionAlgorithm;
+}
+
+// 名言源选项接口
+interface QuoteSourceItem {
+  label: string;
+  value: QuoteSource;
 }
 
 @Entry
@@ -18,8 +25,11 @@ struct Settings {
     enableWeatherAdjustment: false
   };
 
+  @State currentQuoteSource: QuoteSource = QuoteSource.MAOZEDONG;
+
   async aboutToAppear() {
     await this.loadConfig();
+    await this.loadQuoteSource();
   }
 
   async loadConfig() {
@@ -33,12 +43,31 @@ struct Settings {
     }
   }
 
+  async loadQuoteSource() {
+    try {
+      await QuoteData.loadQuoteSource();
+      this.currentQuoteSource = QuoteData.getQuoteSource();
+    } catch (error) {
+      console.error('Failed to load quote source:', error);
+    }
+  }
+
   async saveConfig() {
     try {
       await ScheduleConfig.saveConfig(this.config);
       console.log('Config saved successfully');
     } catch (error) {
       console.error('Failed to save config:', error);
+    }
+  }
+
+  async saveQuoteSource(source: QuoteSource) {
+    try {
+      await QuoteData.saveQuoteSource(source);
+      this.currentQuoteSource = source;
+      console.log('Quote source saved successfully:', source);
+    } catch (error) {
+      console.error('Failed to save quote source:', error);
     }
   }
 
@@ -75,6 +104,25 @@ struct Settings {
       // 设置内容
       Scroll() {
         Column() {
+          // 名言来源选择
+          this.buildSettingSection(
+            '名言来源',
+            '选择名言的内容来源',
+            () => {
+              this.buildQuoteSourceRadioGroup(
+                '内容来源',
+                [
+                  { label: '诗经精选', value: QuoteSource.SHIJING } as QuoteSourceItem,
+                  { label: '毛选摘抄', value: QuoteSource.MAOZEDONG } as QuoteSourceItem
+                ] as QuoteSourceItem[],
+                this.currentQuoteSource,
+                (value: QuoteSource) => {
+                  this.saveQuoteSource(value);
+                }
+              )
+            }
+          )
+
           // 名言选择算法
           this.buildSettingSection(
             '名言选择',
@@ -223,6 +271,40 @@ struct Settings {
       ForEach(options, (option: OptionItem) => {
         Row() {
           Radio({ value: option.value.toString(), group: 'algorithm' })
+            .checked(currentValue === option.value)
+            .onChange((isChecked: boolean) => {
+              if (isChecked) {
+                onChange(option.value);
+              }
+            })
+
+          Text(option.label)
+            .fontSize(14)
+            .fontColor('#2c3e50')
+            .margin({ left: 8 })
+        }
+        .width('100%')
+        .margin({ bottom: 8 })
+        .onClick(() => {
+          onChange(option.value);
+        })
+      })
+    }
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  buildQuoteSourceRadioGroup(title: string, options: QuoteSourceItem[], currentValue: QuoteSource, onChange: (value: QuoteSource) => void) {
+    Column() {
+      Text(title)
+        .fontSize(16)
+        .fontColor('#2c3e50')
+        .alignSelf(ItemAlign.Start)
+        .margin({ bottom: 12 })
+
+      ForEach(options, (option: QuoteSourceItem) => {
+        Row() {
+          Radio({ value: option.value.toString(), group: 'quoteSource' })
             .checked(currentValue === option.value)
             .onChange((isChecked: boolean) => {
               if (isChecked) {
