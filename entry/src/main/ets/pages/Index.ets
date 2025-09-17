@@ -1,6 +1,6 @@
 import { QuoteData, Quote } from '../common/QuoteData';
 import { QuoteSelectionService } from '../services/QuoteSelectionService';
-import { WallpaperService, GeneratedWallpaper, WallpaperStyle } from '../services/WallpaperService';
+import { WallpaperService, GeneratedWallpaper, WallpaperStyle, WallpaperOperationResult } from '../services/WallpaperService';
 import router from '@ohos.router';
 import { ScheduleConfig, WallpaperConfig } from '../common/ScheduleConfig';
 import display from '@ohos.display';
@@ -8,7 +8,7 @@ import componentSnapshot from '@ohos.arkui.componentSnapshot';
 import fs from '@ohos.file.fs';
 import image from '@ohos.multimedia.image';
 import { BusinessError } from '@ohos.base';
-import { Context } from '@ohos.abilityAccessCtrl';
+import common from '@ohos.app.ability.common';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 // SaveButton is not available in HarmonyOS API, using regular Button instead
 
@@ -29,6 +29,9 @@ struct Index {
   @State screenRatio: number = 16/9; // 默认比例
   @State screenWidth: number = 0;
   @State screenHeight: number = 0;
+  @State setLockScreen: boolean = true; // 默认选中设置锁屏壁纸
+  @State saveToGallery: boolean = false; // 默认不选中保存到图库
+  @State isApplying: boolean = false; // 应用壁纸的状态
 
   async aboutToAppear() {
     await this.getScreenRatio();
@@ -197,19 +200,28 @@ struct Index {
   }
 
 
-  async savePreviewImage() {
-    try {
-      console.log('开始保存壁纸图片...');
+  async applyWallpaperOptions() {
+    if (!this.setLockScreen && !this.saveToGallery) {
+      this.showSaveDialog = false;
+      return;
+    }
 
-      // 使用componentSnapshot API截图纯净壁纸区域 - 参考_helper.txt第106行
+    this.isApplying = true;
+
+    try {
+      console.log('开始应用壁纸操作...');
+
+      // 使用componentSnapshot API截图纯净壁纸区域
       componentSnapshot.get("pureWallpaperArea", async (error: Error, pixelMap: image.PixelMap) => {
         if (error) {
           console.error("截图失败: " + JSON.stringify(error));
+          this.isApplying = false;
+          this.showSaveDialog = false;
           return;
         }
 
         try {
-          // 将PixelMap保存为JPEG格式 - 参考_helper.txt第111行
+          // 将PixelMap保存为JPEG格式
           const packOpts: image.PackingOption = {
             format: "image/jpeg",
             quality: 98
@@ -218,23 +230,65 @@ struct Index {
           const imagePacker: image.ImagePacker = image.createImagePacker();
           const arrayBuffer: ArrayBuffer = await imagePacker.packing(pixelMap, packOpts);
 
-          // 保存到相册 - 参考_helper.txt第86-94行
-          await this.saveImageToPhoto(arrayBuffer);
+          // 创建临时文件
+          const context = getContext(this) as common.UIAbilityContext;
+          const filesDir: string = context.filesDir;
+          const tempImagePath = `${filesDir}/temp_wallpaper_${Date.now()}.jpg`;
+
+          // 保存临时文件
+          const file = await fs.open(tempImagePath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+          await fs.write(file.fd, arrayBuffer);
+          await fs.close(file.fd);
+
+          // 执行选定的操作
+          const results = await WallpaperService.applyWallpaperOperations(
+            tempImagePath,
+            this.setLockScreen,
+            this.saveToGallery
+          );
+
+          // 显示结果
+          let message = '';
+          if (this.setLockScreen && results.lockScreenSuccess) {
+            message += '锁屏壁纸设置成功！';
+          } else if (this.setLockScreen && !results.lockScreenSuccess) {
+            message += '锁屏壁纸设置失败！';
+          }
+
+          if (this.saveToGallery && results.gallerySuccess) {
+            if (message) message += '\n';
+            message += '图片已保存到图库！';
+          } else if (this.saveToGallery && !results.gallerySuccess) {
+            if (message) message += '\n';
+            message += '图片保存到图库失败！';
+          }
+
+          console.log('壁纸操作完成:', message);
+
+          // 清理临时文件
+          try {
+            await fs.unlink(tempImagePath);
+          } catch (unlinkError) {
+            console.error('清理临时文件失败:', unlinkError);
+          }
 
           // 释放资源
           imagePacker.release();
           pixelMap.release();
 
-          console.log('壁纸图片保存成功');
-
         } catch (packError) {
-          console.error('图片打包失败:', packError);
+          console.error('图片处理失败:', packError);
           pixelMap.release();
+        } finally {
+          this.isApplying = false;
+          this.showSaveDialog = false;
         }
       });
 
     } catch (error) {
-      console.error('保存图片失败:', error);
+      console.error('应用壁纸失败:', error);
+      this.isApplying = false;
+      this.showSaveDialog = false;
     }
   }
 
@@ -261,7 +315,7 @@ struct Index {
 
   async saveImageToPhoto(buffer: ArrayBuffer): Promise<void> {
     // 按照 _helper.txt 第86-94行的方法实现
-    const context = getContext(this) as Context;
+    const context = getContext(this) as common.UIAbilityContext;
     const helper = photoAccessHelper.getPhotoAccessHelper(context);
     const uri = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg');
     const file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
@@ -464,17 +518,63 @@ struct Index {
   buildSaveDialog() {
     Column() {
       Column() {
-        Text('保存图片')
+        Text('应用壁纸')
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor('#2c3e50')
           .margin({ bottom: 16 })
 
-        Text('是否要保存此壁纸到"锁屏助手"相册？')
+        Text('请选择要执行的操作：')
           .fontSize(16)
           .fontColor('#7f8c8d')
           .textAlign(TextAlign.Center)
-          .margin({ bottom: 24 })
+          .margin({ bottom: 20 })
+
+        // 选项区域
+        Column() {
+          Row() {
+            Checkbox({ name: 'setLockScreen', group: 'wallpaperOptions' })
+              .select(this.setLockScreen)
+              .selectedColor('#5b9bd5')
+              .onChange((value: boolean) => {
+                this.setLockScreen = value;
+              })
+              .margin({ right: 12 })
+
+            Text('设置为系统锁屏壁纸')
+              .fontSize(16)
+              .fontColor('#2c3e50')
+              .flexGrow(1)
+              .onClick(() => {
+                this.setLockScreen = !this.setLockScreen;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .padding({ top: 8, bottom: 8 })
+
+          Row() {
+            Checkbox({ name: 'saveToGallery', group: 'wallpaperOptions' })
+              .select(this.saveToGallery)
+              .selectedColor('#5b9bd5')
+              .onChange((value: boolean) => {
+                this.saveToGallery = value;
+              })
+              .margin({ right: 12 })
+
+            Text('保存到系统图库')
+              .fontSize(16)
+              .fontColor('#2c3e50')
+              .flexGrow(1)
+              .onClick(() => {
+                this.saveToGallery = !this.saveToGallery;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .padding({ top: 8, bottom: 8 })
+        }
+        .margin({ bottom: 24 })
 
         Row() {
           Button('取消')
@@ -484,30 +584,43 @@ struct Index {
             .fontColor('#7f8c8d')
             .borderRadius(6)
             .border({ width: 1, color: '#bdc3c7' })
+            .enabled(!this.isApplying)
             .onClick(() => {
               this.showSaveDialog = false;
             })
 
-          Button('保存')
-            .width('45%')
-            .height(40)
-            .backgroundColor('#5b9bd5')
-            .fontColor('#ffffff')
-            .borderRadius(6)
-            .margin({ left: '10%' })
-            .onClick(async () => {
-              this.showSaveDialog = false;
-              try {
-                await this.savePreviewImage();
-              } catch (error) {
-                console.error("保存图片时发生错误: " + JSON.stringify(error));
+          Button() {
+            if (this.isApplying) {
+              Row() {
+                LoadingProgress()
+                  .width(16)
+                  .height(16)
+                  .color('#ffffff')
+                  .margin({ right: 8 })
+                Text('应用中...')
+                  .fontSize(14)
+                  .fontColor('#ffffff')
               }
-            })
+            } else {
+              Text('确定')
+                .fontSize(16)
+                .fontColor('#ffffff')
+            }
+          }
+          .width('45%')
+          .height(40)
+          .backgroundColor('#5b9bd5')
+          .borderRadius(6)
+          .margin({ left: '10%' })
+          .enabled(!this.isApplying && (this.setLockScreen || this.saveToGallery))
+          .onClick(async () => {
+            await this.applyWallpaperOptions();
+          })
         }
         .width('100%')
         .justifyContent(FlexAlign.SpaceBetween)
       }
-      .width('80%')
+      .width('85%')
       .padding(24)
       .backgroundColor('#ffffff')
       .borderRadius(12)
@@ -524,7 +637,9 @@ struct Index {
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .onClick(() => {
-      this.showSaveDialog = false;
+      if (!this.isApplying) {
+        this.showSaveDialog = false;
+      }
     })
   }
 

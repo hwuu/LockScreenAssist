@@ -39,6 +39,10 @@
     {
       "name": "read_media_permission_reason",
       "value": "Used to access saved wallpaper images from photo gallery"
+    },
+    {
+      "name": "set_wallpaper_permission_reason",
+      "value": "Used to set generated quote wallpapers as system lock screen background"
     }
   ]
 }

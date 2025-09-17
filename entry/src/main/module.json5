@@ -60,6 +60,16 @@
           ],
           "when": "inuse"
         }
+      },
+      {
+        "name": "ohos.permission.SET_WALLPAPER",
+        "reason": "$string:set_wallpaper_permission_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
       }
     ],
     "abilities": [
