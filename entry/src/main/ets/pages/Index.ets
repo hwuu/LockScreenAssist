@@ -29,8 +29,8 @@ struct Index {
   @State screenRatio: number = 16/9; // 默认比例
   @State screenWidth: number = 0;
   @State screenHeight: number = 0;
-  @State setLockScreen: boolean = true; // 默认选中设置锁屏壁纸
-  @State saveToGallery: boolean = false; // 默认不选中保存到图库
+  @State setLockScreen: boolean = false; // 官方已不支持该功能
+  @State saveToGallery: boolean = true; // 默认选中保存到图库
   @State isApplying: boolean = false; // 应用壁纸的状态
 
   async aboutToAppear() {
@@ -432,33 +432,17 @@ struct Index {
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
       .position({ x: 0, y: 0 })
 
-      // 底部操作按钮 - 半透明层
+      // 底部提示文字 - 半透明层
       Column() {
-        Row() {
-          Button() {
-            if (this.isLoading) {
-              LoadingProgress()
-                .width(20)
-                .height(20)
-                .color('#ffffff')
-            } else {
-              Text('试试手气')
-                .fontSize(16)
-                .fontColor('#ffffff')
-            }
-          }
-          .width('100%')
-          .height(40)
-          .backgroundColor('rgba(255, 255, 255, 0.2)')
-          .borderRadius(20)
+        Text('短按切换 · 长按保存')
+          .fontSize(14)
+          .fontColor('#ffffff')
+          .opacity(0.8)
+          .textAlign(TextAlign.Center)
+          .backgroundColor('rgba(0, 0, 0, 0.3)')
+          .padding({ top: 12, bottom: 12, left: 24, right: 24 })
+          .borderRadius(12)
           .backdropBlur(10)
-          .enabled(!this.isLoading)
-          .onClick(async () => {
-            await this.recommendNext();
-          })
-        }
-        .justifyContent(FlexAlign.SpaceBetween)
-        .alignItems(VerticalAlign.Center)
       }
       .width('100%')
       .padding({ left: 20, right: 20, bottom: 30, top: 20 })
@@ -504,11 +488,20 @@ struct Index {
     .height('100%')
     .id('previewArea')
     .gesture(
-      LongPressGesture({ fingers: 1, repeat: false, duration: 800 })
-        .onAction(() => {
-          // 长按保存当前预览的壁纸图片
-          this.showSaveDialog = true;
-        })
+      GestureGroup(GestureMode.Exclusive,
+        // 长按手势：保存壁纸
+        LongPressGesture({ fingers: 1, repeat: false, duration: 800 })
+          .onAction(() => {
+            this.showSaveDialog = true;
+          }),
+        // 短按手势：切换壁纸
+        TapGesture({ count: 1, fingers: 1 })
+          .onAction(async () => {
+            if (!this.isLoading) {
+              await this.recommendNext();
+            }
+          })
+      )
     )
     .bindContentCover(this.showSaveDialog, this.buildSaveDialog(), ModalTransition.NONE)
   }
@@ -532,26 +525,32 @@ struct Index {
 
         // 选项区域
         Column() {
-          Row() {
-            Checkbox({ name: 'setLockScreen', group: 'wallpaperOptions' })
-              .select(this.setLockScreen)
-              .selectedColor('#5b9bd5')
-              .onChange((value: boolean) => {
-                this.setLockScreen = value;
-              })
-              .margin({ right: 12 })
+          Column() {
+            Row() {
+              Checkbox({ name: 'setLockScreen', group: 'wallpaperOptions' })
+                .select(this.setLockScreen)
+                .selectedColor('#5b9bd5')
+                .onChange((value: boolean) => {
+                  this.setLockScreen = value;
+                })
+                .margin({ right: 12 })
+                .enabled(false)
 
-            Text('设置为系统锁屏壁纸')
-              .fontSize(16)
-              .fontColor('#2c3e50')
-              .flexGrow(1)
-              .onClick(() => {
-                this.setLockScreen = !this.setLockScreen;
-              })
+              Text('设置为系统锁屏壁纸')
+                .fontSize(16)
+                .fontColor('#bdc3c7')
+                .flexGrow(1)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+            .padding({ top: 8, bottom: 4 })
+
+            Text('官方已不支持该功能，需保存图片后手动设置')
+              .fontSize(12)
+              .fontColor('#95a5a6')
+              .width('100%')
+              .margin({ left: 32, bottom: 4 })
           }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-          .padding({ top: 8, bottom: 8 })
 
           Row() {
             Checkbox({ name: 'saveToGallery', group: 'wallpaperOptions' })
