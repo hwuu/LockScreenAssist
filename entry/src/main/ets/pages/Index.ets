@@ -32,12 +32,76 @@ struct Index {
   @State setLockScreen: boolean = false; // 官方已不支持该功能
   @State saveToGallery: boolean = true; // 默认选中保存到图库
   @State isApplying: boolean = false; // 应用壁纸的状态
+  @State hintOpacity: number = 0; // 提示文字透明度
+  @State contentOpacity: number = 1; // 内容区域透明度
+  @State isTransitioning: boolean = false; // 是否在过渡动画中
+  private hintTimer: number = -1; // 提示文字定时器
+  private debounceTimer: number = -1; // 防抖定时器
 
   async aboutToAppear() {
     await this.getScreenRatio();
     await this.loadConfig();
     await this.loadCurrentWallpaper();
     await this.updatePreview();
+    this.startHintTimer();
+  }
+
+  // 启动提示文字定时器
+  startHintTimer() {
+    this.clearHintTimer();
+    this.hintTimer = setTimeout(() => {
+      this.showHint();
+    }, 5000);
+  }
+
+  // 清除提示文字定时器
+  clearHintTimer() {
+    if (this.hintTimer !== -1) {
+      clearTimeout(this.hintTimer);
+      this.hintTimer = -1;
+    }
+  }
+
+  // 显示提示文字
+  showHint() {
+    animateTo({
+      duration: 1000,
+      curve: Curve.EaseInOut
+    }, () => {
+      this.hintOpacity = 0.8;
+    });
+  }
+
+  // 隐藏提示文字
+  hideHint() {
+    // 只有在当前显示状态下才执行隐藏动画
+    if (this.hintOpacity > 0) {
+      animateTo({
+        duration: 1000,
+        curve: Curve.EaseInOut
+      }, () => {
+        this.hintOpacity = 0;
+      });
+    }
+  }
+
+  // 重置提示文字定时器（带防抖）
+  resetHintTimer() {
+    // 清除防抖定时器
+    if (this.debounceTimer !== -1) {
+      clearTimeout(this.debounceTimer);
+    }
+
+    // 设置防抖，200ms内的连续操作只执行最后一次
+    this.debounceTimer = setTimeout(() => {
+      // 立即清除定时器，避免重复触发
+      this.clearHintTimer();
+      // 只有在显示状态下才执行隐藏动画
+      this.hideHint();
+      // 重新启动定时器
+      this.startHintTimer();
+      this.debounceTimer = -1;
+    }, 200);
   }
 
   async getScreenRatio() {
@@ -80,30 +144,69 @@ struct Index {
 
   async updatePreview() {
     try {
+      // 设置过渡状态，禁用手势响应
+      this.isTransitioning = true;
+
+      let newBackground = '#2c3e50';
+
       if (this.previewMode === 'recommended' && this.recommendedWallpaper) {
         const previewResult = WallpaperService.createWallpaperPreview(this.recommendedWallpaper);
         if (previewResult) {
-          this.previewBackground = previewResult;
+          newBackground = previewResult;
         } else {
-          this.previewBackground = this.recommendedWallpaper.style.backgroundColor || '#2c3e50';
+          newBackground = this.recommendedWallpaper.style.backgroundColor || '#2c3e50';
         }
       } else if (this.currentWallpaper) {
         const previewResult = WallpaperService.createWallpaperPreview(this.currentWallpaper);
         if (previewResult) {
-          this.previewBackground = previewResult;
+          newBackground = previewResult;
         } else {
-          this.previewBackground = this.currentWallpaper.style.backgroundColor || '#2c3e50';
+          newBackground = this.currentWallpaper.style.backgroundColor || '#2c3e50';
         }
-      } else {
-        this.previewBackground = '#2c3e50';
       }
+
+      // 内容淡出 -> 更新背景和内容 -> 内容淡入
+      // 第一阶段：内容淡出
+      animateTo({
+        duration: 250,
+        curve: Curve.EaseInOut
+      }, () => {
+        this.contentOpacity = 0;
+      });
+
+      // 第二阶段：更新背景，然后内容淡入
+      setTimeout(() => {
+        animateTo({
+          duration: 250,
+          curve: Curve.EaseInOut
+        }, () => {
+          this.previewBackground = newBackground;
+          this.contentOpacity = 1;
+        });
+
+        // 动画完成后恢复手势响应
+        setTimeout(() => {
+          this.isTransitioning = false;
+        }, 250);
+      }, 250);
 
       setTimeout(() => {
         console.log('Preview updated:', this.previewBackground);
       }, 0);
     } catch (error) {
       console.error('Failed to update preview:', error);
-      this.previewBackground = '#2c3e50';
+      animateTo({
+        duration: 500,
+        curve: Curve.EaseInOut
+      }, () => {
+        this.previewBackground = '#2c3e50';
+        this.contentOpacity = 1;
+      });
+
+      // 错误情况下也要恢复手势响应
+      setTimeout(() => {
+        this.isTransitioning = false;
+      }, 500);
     }
   }
 
@@ -113,6 +216,11 @@ struct Index {
   }
 
   async recommendNext() {
+    // 如果正在过渡中，直接返回
+    if (this.isTransitioning) {
+      return;
+    }
+
     try {
       this.isLoading = true;
       this.recommendedQuote = null;
@@ -362,11 +470,12 @@ struct Index {
             .margin({ bottom: 40 })
             .maxLines(20)
             .textOverflow({ overflow: TextOverflow.None })
+            .opacity(this.contentOpacity)
 
           Text(`—— ${this.recommendedQuote.author || ''}${(this.recommendedQuote.author && this.recommendedQuote.source) ? ' · ' : ''}${this.recommendedQuote.source || ''}`)
             .fontSize(12)
             .fontColor((this.recommendedWallpaper?.style.textColor) || '#d3d3d3')
-            .opacity(0.8)
+            .opacity(0.8 * this.contentOpacity)
             .textAlign(TextAlign.Center)
             .width('100%')
         } else if (this.currentQuote) {
@@ -379,11 +488,12 @@ struct Index {
             .margin({ bottom: 40 })
             .maxLines(20)
             .textOverflow({ overflow: TextOverflow.None })
+            .opacity(this.contentOpacity)
 
           Text(`—— ${this.currentQuote.author || ''}${(this.currentQuote.author && this.currentQuote.source) ? ' · ' : ''}${this.currentQuote.source || ''}`)
             .fontSize(12)
             .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
-            .opacity(0.8)
+            .opacity(0.8 * this.contentOpacity)
             .textAlign(TextAlign.Center)
             .width('100%')
         } else {
@@ -392,6 +502,7 @@ struct Index {
             .fontSize(16)
             .fontColor('#d3d3d3')
             .textAlign(TextAlign.Center)
+            .opacity(this.contentOpacity)
         }
       }
       .justifyContent(FlexAlign.Center)
@@ -399,6 +510,7 @@ struct Index {
       .padding(24)
       .width('100%')
       .height('100%')
+      .opacity(this.contentOpacity)
 
       // 顶部标题栏 - 半透明层
       Row() {
@@ -437,9 +549,9 @@ struct Index {
         Text('短按切换 · 长按保存')
           .fontSize(14)
           .fontColor('#ffffff')
-          .opacity(0.8)
+          .opacity(this.hintOpacity)
           .textAlign(TextAlign.Center)
-          .backgroundColor('rgba(0, 0, 0, 0.3)')
+          .backgroundColor(`rgba(0, 0, 0, ${this.hintOpacity * 0.375})`)
           .padding({ top: 12, bottom: 12, left: 24, right: 24 })
           .borderRadius(12)
           .backdropBlur(10)
@@ -450,6 +562,7 @@ struct Index {
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       .position({ x: 0, y: '100%' })
       .translate({ y: '-100%' })
+      .opacity(this.hintOpacity)
 
       // 全屏加载遮罩
       if (this.isLoading) {
@@ -492,14 +605,22 @@ struct Index {
         // 长按手势：保存壁纸
         LongPressGesture({ fingers: 1, repeat: false, duration: 800 })
           .onAction(() => {
+            // 在过渡期间禁用手势响应
+            if (this.isTransitioning) {
+              return;
+            }
+            this.resetHintTimer();
             this.showSaveDialog = true;
           }),
         // 短按手势：切换壁纸
         TapGesture({ count: 1, fingers: 1 })
           .onAction(async () => {
-            if (!this.isLoading) {
-              await this.recommendNext();
+            // 在加载或过渡期间禁用手势响应
+            if (this.isLoading || this.isTransitioning) {
+              return;
             }
+            this.resetHintTimer();
+            await this.recommendNext();
           })
       )
     )
@@ -645,6 +766,7 @@ struct Index {
   @Builder
   buildPureWallpaper() {
     // 纯净的壁纸组件，只包含背景色和文字，用于截图保存
+    // 注意：截图组件不使用动画，始终显示完整内容
     Column() {
       if (this.previewMode === 'recommended' && this.recommendedQuote) {
         // 推荐模式显示推荐内容
