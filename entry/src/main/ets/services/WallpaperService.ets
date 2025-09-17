@@ -1,5 +1,9 @@
 // 壁纸生成和管理服务
 import { Quote } from '../common/QuoteData';
+import wallpaper from '@ohos.wallpaper';
+import photoAccessHelper from '@ohos.file.photoAccessHelper';
+import fs from '@ohos.file.fs';
+import common from '@ohos.app.ability.common';
 
 export interface WallpaperStyle {
   backgroundColor: string;
@@ -273,18 +277,22 @@ export class WallpaperService {
   // 设置锁屏壁纸
   static async setLockScreenWallpaper(imagePath: string): Promise<boolean> {
     try {
-      // 使用wallpaper模块设置锁屏壁纸
-      // 注意：实际API可能需要根据HarmonyOS版本调整
       console.log('Setting lock screen wallpaper:', imagePath);
 
-      // 模拟设置成功，实际项目中需要调用真实的系统API
-      // const wallpaper = require('@ohos.wallpaper');
-      // await wallpaper.setWallpaper(imagePath, wallpaper.WallpaperType.WALLPAPER_LOCKSCREEN);
+      // 获取上下文 - 明确类型为UIAbilityContext
+      const context: common.UIAbilityContext = globalThis.abilityContext;
+      if (!context) {
+        throw new Error('Unable to get application context');
+      }
 
-      console.log('Lock screen wallpaper set successfully (simulated):', imagePath);
+      // 直接调用wallpaper.setWallpaper方法
+      await wallpaper.setWallpaper(imagePath, 1); // 1表示WALLPAPER_LOCKSCREEN类型
+
+      console.log('Lock screen wallpaper set successfully:', imagePath);
       return true;
     } catch (error) {
       console.error('Failed to set lock screen wallpaper:', error);
+      console.error('Error details:', JSON.stringify(error));
       return false;
     }
   }
@@ -294,16 +302,35 @@ export class WallpaperService {
     try {
       console.log('Attempting to save image to gallery:', imagePath);
 
-      // 模拟保存到图库的操作
-      // 在实际项目中，这里应该使用PhotoAccessHelper API
-      // const photoAccessHelper = require('@ohos.file.photoAccessHelper');
-      // const helper = photoAccessHelper.getPhotoAccessHelper(context);
-      // await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg');
+      // 获取上下文 - 明确类型为UIAbilityContext
+      const context: common.UIAbilityContext = globalThis.abilityContext;
+      if (!context) {
+        throw new Error('Unable to get application context');
+      }
 
-      console.log('Image saved to gallery successfully (simulated):', imagePath);
+      // 参考 _helper.txt 第88行：const helper = photoAccessHelper.getPhotoAccessHelper(context);
+      const helper = photoAccessHelper.getPhotoAccessHelper(context);
+
+      // 参考 _helper.txt 第89行：const uri = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg');
+      const uri: string = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg');
+
+      // 读取源文件内容
+      const sourceFile = await fs.open(imagePath, fs.OpenMode.READ_ONLY);
+      const stat = await fs.stat(imagePath);
+      const buffer = new ArrayBuffer(stat.size);
+      await fs.read(sourceFile.fd, buffer);
+      await fs.close(sourceFile);
+
+      // 参考 _helper.txt 第90-92行：const file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      const file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      await fs.write(file.fd, buffer);
+      await fs.close(file.fd);
+
+      console.log('Image saved to gallery successfully:', uri);
       return true;
     } catch (error) {
       console.error('Failed to save image to gallery:', error);
+      console.error('Error details:', JSON.stringify(error));
       return false;
     }
   }
