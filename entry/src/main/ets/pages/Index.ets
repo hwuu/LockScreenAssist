@@ -3,6 +3,7 @@ import { QuoteSelectionService } from '../services/QuoteSelectionService';
 import { WallpaperService, GeneratedWallpaper, WallpaperStyle, WallpaperOperationResult } from '../services/WallpaperService';
 import router from '@ohos.router';
 import { ScheduleConfig, WallpaperConfig } from '../common/ScheduleConfig';
+import { TextUtils } from '../common/TextUtils';
 import display from '@ohos.display';
 import componentSnapshot from '@ohos.arkui.componentSnapshot';
 import fs from '@ohos.file.fs';
@@ -13,13 +14,6 @@ import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import measure from '@ohos.measure';
 // SaveButton is not available in HarmonyOS API, using regular Button instead
 
-// 文本测量配置接口
-interface TextMeasureConfig {
-  text: string;
-  fontSize: number;
-  fontFamily: string;
-  maxWidth: number;
-}
 
 // 文本换行结果接口
 interface TextLayoutResult {
@@ -181,7 +175,7 @@ class TextLayoutOptimizer {
       console.log(`综合评分: ${score.toFixed(4)}`);
 
       // 输出每行的详细信息
-      metrics.lines.forEach((line, index) => {
+      metrics.lines.forEach((line: LineInfo, index: number) => {
         console.log(`行${index + 1}: "${line.text}" (宽度:${line.width.toFixed(1)}px, 字符数:${line.characterCount}, 孤行:${line.isOrphan}, 自动换行:${line.isAutoWrapped})`);
       });
 
@@ -251,21 +245,15 @@ class TextLayoutOptimizer {
     console.log(`原始文本: "${text}"`);
 
     // 1. 首先应用强制标点换行逻辑，获取原始行数
-    const punctuationFormatted = text
-      .replace(/([，,])\s*/g, '$1\n')
-      .replace(/([。！？；：])\s*/g, '$1\n \n')
-      .replace(/([.!?;:])\s*/g, '$1\n \n')
-      .replace(/\n{3,}/g, '\n \n')
-      .replace(/\s*\n\s*/g, '\n')
-      .trim();
+    const punctuationFormatted = TextUtils.applySimpleTextFormatting(text);
 
     console.log(`标点换行后: "${punctuationFormatted}"`);
 
-    const originalLines = punctuationFormatted.split('\n').filter(line => line.trim().length > 0);
-    const originalLineCount = originalLines.length;
+    const originalLines: string[] = punctuationFormatted.split('\n').filter((line: string) => line.trim().length > 0);
+    const originalLineCount: number = originalLines.length;
 
     console.log(`原始行数: ${originalLineCount}`);
-    originalLines.forEach((line, index) => {
+    originalLines.forEach((line: string, index: number) => {
       console.log(`原始行${index + 1}: "${line}"`);
     });
 
@@ -276,16 +264,16 @@ class TextLayoutOptimizer {
     let totalHeight = 0;
 
     for (let i = 0; i < originalLines.length; i++) {
-      const originalLine = originalLines[i];
+      const originalLine: string = originalLines[i];
       if (originalLine.trim().length === 0) continue;
 
       // 测量这一行在容器宽度下的换行情况
       const wrappedLines = this.wrapSingleLine(originalLine, fontSize, containerWidth);
 
       for (let j = 0; j < wrappedLines.length; j++) {
-        const lineText = wrappedLines[j];
-        const lineWidth = this.measureSingleLineWidth(lineText, fontSize);
-        const lineHeight = fontSize * 1.2; // 行高系数
+        const lineText: string = wrappedLines[j];
+        const lineWidth: number = TextUtils.measureTextWidthCore(lineText, fontSize);
+        const lineHeight: number = fontSize * 1.2; // 行高系数
 
         const lineInfo: LineInfo = {
           text: lineText,
@@ -335,13 +323,13 @@ class TextLayoutOptimizer {
     let i = 0;
 
     // 标点符号规则
-    const punctuationAtStart = /^[，。！？；：、）】」』》\"'…]/;
-    const punctuationAtEnd = /[（【「』《\"']$/;
+    const punctuationAtStart = new RegExp('^' + TextUtils.AT_START.source);
+    const punctuationAtEnd = new RegExp(TextUtils.AT_END.source + '$');
 
     while (i < text.length) {
       const char = text[i];
       const testLine = currentLine + char;
-      const lineWidth = this.measureSingleLineWidth(testLine, fontSize);
+      const lineWidth = TextUtils.measureTextWidthCore(testLine, fontSize);
 
       console.log(`字符'${char}': 测试行"${testLine}" 宽度${lineWidth.toFixed(1)}px, 最大宽度${maxWidth}px`);
 
@@ -372,48 +360,6 @@ class TextLayoutOptimizer {
     return lines.length > 0 ? lines : [text];
   }
 
-  // 测量单行文本宽度
-  private measureSingleLineWidth(text: string, fontSize: number): number {
-    try {
-      const textMetrics = measure.measureTextSize({
-        textContent: text,
-        fontSize: fontSize,
-        fontFamily: 'HarmonyOS Sans'
-      });
-
-      const width = textMetrics.width;
-      let result: number;
-
-      if (typeof width === 'number') {
-        result = width;
-      } else if (typeof width === 'string') {
-        const numericValue = parseFloat(width);
-        result = isNaN(numericValue) ? text.length * fontSize * 0.9 : numericValue;
-      } else {
-        result = text.length * fontSize * 0.9;
-      }
-
-      /*
-      // 对关键文本（如我们的测试句子）输出详细日志
-      if (text.includes('一切群众的实际生活问题') || text.includes('都是我们应当注意的问题')) {
-        console.log(`🔍 关键文本测量: "${text}" 字体${fontSize}px = ${result.toFixed(1)}px (原始值: ${width}, 类型: ${typeof width})`);
-      }
-      */
-
-      // 添加详细日志用于调试
-      if (text.length <= 3) { // 只对短文本输出详细日志，避免日志过多
-        console.log(`measureSingleLineWidth: "${text}" 字体${fontSize}px = ${result.toFixed(1)}px (原始值: ${width}, 类型: ${typeof width})`);
-      }
-
-      return result;
-    } catch (error) {
-      console.error('Failed to measure text width:', error);
-      const fallback = text.length * fontSize * 0.9;
-      console.log(`measureSingleLineWidth fallback: "${text}" 字体${fontSize}px = ${fallback.toFixed(1)}px`);
-      return fallback;
-    }
-  }
-
   // 新的寻找最佳换行点方法
   private findOptimalBreakPointNew(
     fullText: string,
@@ -423,12 +369,12 @@ class TextLayoutOptimizer {
     maxWidth: number
   ): BreakPoint {
     const nextChar = fullText[currentIndex] || '';
-    const punctuationAtStart = /[，。！？；：、）】」』》\"'…]/;
-    const punctuationAtEnd = /[（【「』《\"']/;
+    const punctuationAtStart = TextUtils.AT_START;
+    const punctuationAtEnd = TextUtils.AT_END;
 
     if (punctuationAtStart.test(nextChar)) {
       const testLine = currentLine + nextChar;
-      const totalWidth = this.measureSingleLineWidth(testLine, fontSize);
+      const totalWidth = TextUtils.measureTextWidthCore(testLine, fontSize);
 
       if (totalWidth <= maxWidth) {
         return {
@@ -462,13 +408,13 @@ class TextLayoutOptimizer {
       const truncatedLine = currentLine.substring(0, i);
       const char = currentLine[i];
 
-      const punctuationAtEnd = /[（【「』《\"']/;
-      const punctuationAtStart = /[，。！？；：、）】」』》\"'…]/;
+      const punctuationAtEnd = TextUtils.AT_END;
+      const punctuationAtStart = TextUtils.AT_START;
 
       if (!punctuationAtEnd.test(truncatedLine[truncatedLine.length - 1] || '') &&
           !punctuationAtStart.test(char)) {
 
-        const truncatedWidth = this.measureSingleLineWidth(truncatedLine, fontSize);
+        const truncatedWidth = TextUtils.measureTextWidthCore(truncatedLine, fontSize);
 
         if (truncatedWidth <= maxWidth) {
           return {
@@ -487,8 +433,7 @@ class TextLayoutOptimizer {
 
   // 检查是否有行首标点
   private hasLeadingPunctuation(line: string): boolean {
-    const punctuationAtStart = /^[，。！？；：、）】」』》\"'…]/;
-    return punctuationAtStart.test(line);
+    return TextUtils.isStartPunctuation(line.charAt(0));
   }
 
   // 检查是否为孤行
@@ -593,6 +538,7 @@ class TextLayoutOptimizer {
     if (idealLines === 0) return 0;
     return Math.abs(idealLines - actualLines) / idealLines;
   }
+
 }
 
 // 数据源类实现，参考helper6_page_turn.txt第68-74行
@@ -632,7 +578,7 @@ class QuoteDataSource implements IDataSource {
   }
 
   private notifyDataAdd(index: number): void {
-    this.listeners.forEach(listener => {
+    this.listeners.forEach((listener: DataChangeListener) => {
       listener.onDataAdd(index);
     });
   }
@@ -674,229 +620,37 @@ struct Index {
   private textLayoutOptimizer: TextLayoutOptimizer | null = null; // 文本布局优化器
   private usedQuoteTexts: Set<string> = new Set(); // 已使用的quote文本集合，用于去重
 
-  // 测量文本宽度的方法
-  private measureTextWidth(config: TextMeasureConfig): number {
-    try {
-      const textMetrics = measure.measureTextSize({
-        textContent: config.text,
-        fontSize: config.fontSize,
-        fontFamily: config.fontFamily
-      });
-      // 将Length类型转换为number
-      const width = textMetrics.width;
-      if (typeof width === 'number') {
-        return width;
-      } else if (typeof width === 'string') {
-        // 如果是字符串形式（如"100px"），提取数值部分
-        const numericValue = parseFloat(width);
-        return isNaN(numericValue) ? config.text.length * config.fontSize * 0.9 : numericValue;
-      } else {
-        // 其他情况降级到估算
-        return config.text.length * config.fontSize * 0.9;
-      }
-    } catch (error) {
-      console.error('Failed to measure text:', error);
-      // 降级到估算方法
-      return config.text.length * config.fontSize * 0.9;
-    }
+  // 计算基于字体大小的动态容器宽度
+  private calculateDynamicContainerWidth(fontSize: number): number {
+    const parentPadding = 48; // 左右各24px
+    const safetyMargin = fontSize * 5; // 字体大小 * 5
+    const rawContainerWidth = this.screenWidth - parentPadding - safetyMargin;
+    return Math.max(rawContainerWidth, 200); // 最小宽度200px
   }
 
-  // 智能文本换行方法
-  private smartTextWrap(text: string, fontSize: number, maxWidth: number): string[] {
-    const lines: string[] = [];
-    let currentLine = '';
-    let i = 0;
+  // 处理单个quote的通用方法（添加到数据源、生成壁纸、优化字体）
+  private async processQuote(quote: Quote): Promise<void> {
+    // 添加到数据源和已使用列表
+    this.quoteDataSource.pushItem(quote);
+    this.usedQuoteTexts.add(quote.text);
 
-    // 定义标点符号规则
-    const punctuationAtStart = /^[，。！？；：、）】」』》"'…]/;
-    const punctuationAtEnd = /[（【「』《"']$/;
+    // 生成壁纸
+    const wallpaper = await WallpaperService.generateWallpaper(quote);
+    this.wallpaperList.push(wallpaper);
 
-    while (i < text.length) {
-      const char = text[i];
-      const testLine = currentLine + char;
-
-      const lineWidth = this.measureTextWidth({
-        text: testLine,
-        fontSize: fontSize,
-        fontFamily: 'HarmonyOS Sans',
-        maxWidth: maxWidth
-      });
-
-      // 检查是否超出行宽
-      if (lineWidth > maxWidth && currentLine.length > 0) {
-        // 需要换行，检查换行规则
-        const breakResult = this.findOptimalBreakPoint(
-          text, currentLine, i, fontSize, maxWidth
-        );
-
-        lines.push(breakResult.line);
-        currentLine = '';
-        i = breakResult.nextIndex;
-        continue;
-      }
-
-      currentLine += char;
-      i++;
-    }
-
-    if (currentLine.length > 0) {
-      lines.push(currentLine);
-    }
-
-    return lines;
+    // 预处理字体大小
+    const quoteFontSize = wallpaper?.style.fontSize || 24;
+    const quoteContainerWidth = this.calculateDynamicContainerWidth(quoteFontSize);
+    const quoteLayout = this.formatQuoteText(quote.text, quoteFontSize, quoteContainerWidth);
+    this.optimizedFontSizes.push(quoteLayout.fontSize);
   }
 
-  // 寻找最佳换行点
-  private findOptimalBreakPoint(
-    fullText: string,
-    currentLine: string,
-    currentIndex: number,
-    fontSize: number,
-    maxWidth: number
-  ): BreakPoint {
 
-    // 检查下一个字符是否为标点符号（避行首）
-    const nextChar = fullText[currentIndex] || '';
-    const punctuationAtStart = /[，。！？；：、）】」』》"'…]/;
-    const punctuationAtEnd = /[（【「』《"']/;
 
-    if (punctuationAtStart.test(nextChar)) {
-      // 下一个字符是标点符号，尝试将其加入当前行
-      const testLine = currentLine + nextChar;
-      const totalWidth = this.measureTextWidth({
-        text: testLine,
-        fontSize: fontSize,
-        fontFamily: 'HarmonyOS Sans',
-        maxWidth: maxWidth
-      });
 
-      if (totalWidth <= maxWidth) {
-        return {
-          line: testLine,
-          nextIndex: currentIndex + 1
-        };
-      } else {
-        // 标点放不下，向前回退
-        return this.findPreviousBreakPoint(currentLine, currentIndex, fontSize, maxWidth);
-      }
-    }
 
-    // 检查当前行末尾是否为不能断行的标点
-    const lastChar = currentLine[currentLine.length - 1] || '';
-    if (punctuationAtEnd.test(lastChar)) {
-      return this.findPreviousBreakPoint(currentLine, currentIndex, fontSize, maxWidth);
-    }
 
-    // 正常断行
-    return {
-      line: currentLine,
-      nextIndex: currentIndex
-    };
-  }
 
-  // 向前回退寻找断点
-  private findPreviousBreakPoint(
-    currentLine: string,
-    currentIndex: number,
-    fontSize: number,
-    maxWidth: number
-  ): BreakPoint {
-
-    // 从当前行末尾向前寻找合适的断点
-    for (let i = currentLine.length - 1; i > 0; i--) {
-      const truncatedLine = currentLine.substring(0, i);
-      const char = currentLine[i];
-
-      const punctuationAtEnd = /[（【「』《"']/;
-      const punctuationAtStart = /[，。！？；：、）】」』》"'…]/;
-
-      if (!punctuationAtEnd.test(truncatedLine[truncatedLine.length - 1] || '') &&
-          !punctuationAtStart.test(char)) {
-
-        const truncatedWidth = this.measureTextWidth({
-          text: truncatedLine,
-          fontSize: fontSize,
-          fontFamily: 'HarmonyOS Sans',
-          maxWidth: maxWidth
-        });
-
-        if (truncatedWidth <= maxWidth) {
-          return {
-            line: truncatedLine,
-            nextIndex: currentIndex - (currentLine.length - i)
-          };
-        }
-      }
-    }
-
-    // 实在找不到合适断点，强制断行
-    return {
-      line: currentLine,
-      nextIndex: currentIndex
-    };
-  }
-
-  // 检查是否有孤行
-  private hasOrphanLines(lines: string[]): boolean {
-    return lines.some(line => {
-      const effectiveLength = line.replace(/[，。！？；：、（）【】「」『』《》"'"'…]/g, '').length;
-      return effectiveLength > 0 && effectiveLength < 3;
-    });
-  }
-
-  // 检查是否有标点符号在行首
-  private hasPunctuationAtLineStart(lines: string[]): boolean {
-    const punctuationAtStart = /^[，。！？；：、）】」』》"'…]/;
-    return lines.some(line => punctuationAtStart.test(line));
-  }
-
-  // 优化字体大小以获得最佳排版
-  private optimizeFontSizeForLayout(
-    text: string,
-    containerWidth: number,
-    initialFontSize: number,
-    maxLines: number = 20
-  ): number {
-
-    let fontSize = initialFontSize;
-    let attempts = 0;
-    const maxAttempts = 8;
-
-    while (attempts < maxAttempts) {
-      const lines = this.smartTextWrap(text, fontSize, containerWidth);
-
-      // 检查是否符合排版要求
-      if (this.isLayoutAcceptable(lines, maxLines)) {
-        break;
-      }
-
-      // 如果行数太多或有孤行，减小字体
-      if (lines.length > maxLines || this.hasOrphanLines(lines)) {
-        fontSize = Math.max(fontSize - 1, 14); // 最小14px
-      } else {
-        // 可以尝试增大字体
-        fontSize = Math.min(fontSize + 1, 40); // 最大40px
-      }
-
-      attempts++;
-    }
-
-    return fontSize;
-  }
-
-  // 检查排版是否可接受
-  private isLayoutAcceptable(lines: string[], maxLines: number): boolean {
-    // 检查孤行
-    if (this.hasOrphanLines(lines)) return false;
-
-    // 检查标点符号位置
-    if (this.hasPunctuationAtLineStart(lines)) return false;
-
-    // 检查行数是否合理
-    if (lines.length > maxLines) return false;
-
-    return true;
-  }
 
   async aboutToAppear() {
     // 确保屏幕尺寸首先被正确获取
@@ -972,11 +726,9 @@ struct Index {
       console.log(`使用初始字体大小: ${initialFontSize}px`);
 
       // 重新计算基于字体大小的安全边距和容器宽度
-      const dynamicSafetyMargin = initialFontSize * 5; // 字体大小 * 5
-      const dynamicRawContainerWidth = this.screenWidth - parentPadding - dynamicSafetyMargin;
-      const dynamicContainerWidth = Math.max(dynamicRawContainerWidth, 200);
+      const dynamicContainerWidth = this.calculateDynamicContainerWidth(initialFontSize);
 
-      console.log(`动态安全边距: ${dynamicSafetyMargin}px (基于字体${initialFontSize}px)`);
+      console.log(`动态安全边距: ${initialFontSize * 5}px (基于字体${initialFontSize}px)`);
       console.log(`动态容器宽度: ${dynamicContainerWidth}px`);
 
       const textLayout = this.formatQuoteText(this.currentQuote.text, initialFontSize, dynamicContainerWidth);
@@ -991,19 +743,7 @@ struct Index {
       const moreQuotes = await QuoteSelectionService.getRecommendedQuotes(10, this.usedQuoteTexts);
       if (moreQuotes && moreQuotes.length > 0) {
         for (const quote of moreQuotes) {
-          this.quoteDataSource.pushItem(quote);
-          this.usedQuoteTexts.add(quote.text); // 添加到已使用列表
-          const wallpaper = await WallpaperService.generateWallpaper(quote);
-          this.wallpaperList.push(wallpaper);
-
-          // 预处理字体大小
-          const quoteFontSize = wallpaper?.style.fontSize || 24;
-          // 为每个quote计算动态安全边距和容器宽度
-          const quoteSafetyMargin = quoteFontSize * 5; // 字体大小 * 5
-          const quoteRawContainerWidth = this.screenWidth - parentPadding - quoteSafetyMargin;
-          const quoteContainerWidth = Math.max(quoteRawContainerWidth, 200);
-          const quoteLayout = this.formatQuoteText(quote.text, quoteFontSize, quoteContainerWidth);
-          this.optimizedFontSizes.push(quoteLayout.fontSize);
+          await this.processQuote(quote);
         }
         console.log(`加载了${moreQuotes.length}条推荐名言`);
       }
@@ -1302,19 +1042,7 @@ struct Index {
           const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1, this.usedQuoteTexts);
           if (recommendedQuotes && recommendedQuotes.length > 0) {
             const quote = recommendedQuotes[0];
-            this.quoteDataSource.pushItem(quote);
-            this.usedQuoteTexts.add(quote.text); // 添加到已使用列表
-            const wallpaper = await WallpaperService.generateWallpaper(quote);
-            this.wallpaperList.push(wallpaper);
-
-            // 预处理字体大小
-            const quoteFontSize = wallpaper?.style.fontSize || 24;
-            // 为每个quote计算动态安全边距和容器宽度
-            const quoteSafetyMargin = quoteFontSize * 5; // 字体大小 * 5
-            const quoteRawContainerWidth = this.screenWidth - parentPadding - quoteSafetyMargin;
-            const quoteContainerWidth = Math.max(quoteRawContainerWidth, 200);
-            const quoteLayout = this.formatQuoteText(quote.text, quoteFontSize, quoteContainerWidth);
-            this.optimizedFontSizes.push(quoteLayout.fontSize);
+            await this.processQuote(quote);
           }
         }
 
@@ -1460,13 +1188,7 @@ struct Index {
     // 如果没有提供参数或优化器未初始化，使用简单处理
     if (!fontSize || !containerWidth || !this.textLayoutOptimizer) {
       // 降级到原有的简单换行逻辑
-      const simpleFormatted = text
-        .replace(/([，,])\s*/g, '$1\n')
-        .replace(/([。！？；：])\s*/g, '$1\n \n')
-        .replace(/([.!?;:])\s*/g, '$1\n \n')
-        .replace(/\n{3,}/g, '\n \n')
-        .replace(/\s*\n\s*/g, '\n')
-        .trim();
+      const simpleFormatted = TextUtils.applySimpleTextFormatting(text);
 
       return {
         text: simpleFormatted,
@@ -1475,7 +1197,7 @@ struct Index {
       };
     }
 
-    // 使用新的智能优化算法
+    // 使用TextLayoutOptimizer的智能优化算法
     try {
       console.log(`Starting text layout optimization for: "${text.substring(0, 20)}..."`);
       const result = this.textLayoutOptimizer.optimizeLayout(text, containerWidth, fontSize);
@@ -1485,13 +1207,7 @@ struct Index {
       console.error('Advanced text optimization failed, fallback to simple formatting:', error);
 
       // 出错时降级到简单处理
-      const simpleFormatted = text
-        .replace(/([，,])\s*/g, '$1\n')
-        .replace(/([。！？；：])\s*/g, '$1\n \n')
-        .replace(/([.!?;:])\s*/g, '$1\n \n')
-        .replace(/\n{3,}/g, '\n \n')
-        .replace(/\s*\n\s*/g, '\n')
-        .trim();
+      const simpleFormatted = TextUtils.applySimpleTextFormatting(text);
 
       return {
         text: simpleFormatted,
