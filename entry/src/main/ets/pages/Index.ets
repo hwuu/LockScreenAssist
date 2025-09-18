@@ -80,6 +80,8 @@ struct Index {
   @State isTransitioning: boolean = false; // 是否在过渡动画中
   private hintTimer: number = -1; // 提示文字定时器
   private debounceTimer: number = -1; // 防抖定时器
+  private blinkTimer: number = -1; // 闪烁动画定时器
+  @State isBlinking: boolean = false; // 是否正在闪烁
 
   // 上下翻页相关状态
   @State currentPageIndex: number = 0;
@@ -142,7 +144,7 @@ struct Index {
     this.clearHintTimer();
     this.hintTimer = setTimeout(() => {
       this.showHint();
-    }, 5000);
+    }, 4000);
   }
 
   // 清除提示文字定时器
@@ -153,31 +155,109 @@ struct Index {
     }
   }
 
+  // 清除闪烁定时器
+  clearBlinkTimer() {
+    if (this.blinkTimer !== -1) {
+      clearTimeout(this.blinkTimer);
+      this.blinkTimer = -1;
+    }
+  }
+
   // 显示提示文字
   showHint() {
     animateTo({
-      duration: 1000,
-      curve: Curve.EaseInOut
+      duration: 2000,
+      curve: Curve.EaseInOut,
+      onFinish: () => {
+        // 渐入动画完成后开始闪烁效果
+        this.startBlinkEffect();
+      }
     }, () => {
       this.hintOpacity = 0.8;
     });
   }
 
+  // 开始闪烁效果
+  startBlinkEffect() {
+    // 移除透明度检查，因为呼吸循环会改变透明度
+    this.isBlinking = true;
+    this.blinkCycle();
+  }
+
+  // 呼吸循环（模仿人类平静呼吸）
+  blinkCycle() {
+    if (!this.isBlinking) {
+      // 如果不在闪烁状态，停止呼吸
+      return;
+    }
+
+    // 第一阶段：静止等待2秒（呼吸间隙）
+    this.blinkTimer = setTimeout(() => {
+      if (!this.isBlinking) return;
+
+      // 第二阶段：缓慢"呼气"3秒
+      animateTo({
+        duration: 3000,
+        curve: Curve.EaseInOut, // 平缓的缓动曲线，模仿自然呼吸
+        onFinish: () => {
+          // 呼气动画完成后，开始底部停顿
+          if (!this.isBlinking) return;
+
+          // 第三阶段：底部停顿5秒
+          setTimeout(() => {
+            if (!this.isBlinking) return;
+
+            // 第四阶段：缓慢"吸气"2.5秒，从0.1恢复到0.8
+            animateTo({
+              duration: 2500,
+              curve: Curve.EaseInOut,
+              onFinish: () => {
+                // 完成一轮呼吸后继续下一轮
+                if (this.isBlinking) {
+                  this.blinkCycle();
+                }
+              }
+            }, () => {
+              this.hintOpacity = 0.8;
+            });
+          }, 500); // 底部停顿0.5秒
+        }
+      }, () => {
+        this.hintOpacity = 0.1;
+      });
+    }, 2000); // 初始静止2秒
+  }
+
+  // 停止闪烁效果
+  stopBlinkEffect() {
+    this.isBlinking = false;
+    this.clearBlinkTimer();
+  }
+
   // 隐藏提示文字
   hideHint() {
+    // 停止闪烁效果
+    this.stopBlinkEffect();
+
     // 只有在当前显示状态下才执行隐藏动画
     if (this.hintOpacity > 0) {
-      animateTo({
-        duration: 1000,
-        curve: Curve.EaseInOut
-      }, () => {
-        this.hintOpacity = 0;
-      });
+      // 添加短暂延迟，确保呼吸动画完全停止
+      setTimeout(() => {
+        animateTo({
+          duration: 1000,
+          curve: Curve.EaseInOut
+        }, () => {
+          this.hintOpacity = 0;
+        });
+      }, 50); // 50ms延迟确保状态同步
     }
   }
 
   // 重置提示文字定时器（带防抖）
   resetHintTimer() {
+    // 停止闪烁效果
+    this.stopBlinkEffect();
+
     // 清除防抖定时器
     if (this.debounceTimer !== -1) {
       clearTimeout(this.debounceTimer);
@@ -322,10 +402,20 @@ struct Index {
   async loadMoreIfNeeded(currentIndex: number) {
     const totalCount = this.quoteDataSource.totalCount();
 
+    // 限制最多加载100条内容
+    if (totalCount >= 100) {
+      console.log('已达到最大加载数量限制(100条)');
+      return;
+    }
+
     // 当滚动到倒数第3项时，预加载更多内容
     if (currentIndex >= totalCount - 3) {
       try {
-        for (let i = 0; i < 5; i++) { // 预加载5条
+        // 计算还能加载多少条，避免超过100条限制
+        const remainingCount = 100 - totalCount;
+        const loadCount = Math.min(5, remainingCount); // 预加载5条或剩余数量
+
+        for (let i = 0; i < loadCount; i++) {
           const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1);
           if (recommendedQuotes && recommendedQuotes.length > 0) {
             const quote = recommendedQuotes[0];
@@ -334,6 +424,8 @@ struct Index {
             this.wallpaperList.push(wallpaper);
           }
         }
+
+        console.log(`加载了${loadCount}条内容，当前总数：${this.quoteDataSource.totalCount()}`);
       } catch (error) {
         console.error('Failed to load more quotes:', error);
       }
@@ -538,14 +630,30 @@ struct Index {
       .height('100%')
       .indicator(false) // 隐藏指示器
       .vertical(true) // 设置为垂直方向滑动
+      .loop(false) // 禁用循环滚动，防止在边界时继续滑动
       .cachedCount(3) // 参考helper6_page_turn.txt第53行，设置缓存数量
       .onChange((index: number) => {
-        this.onScrollIndex(index);
-        this.updateBackgroundForCurrentPage(index);
-        this.resetHintTimer(); // 滑动切换时重置提示文字定时器
+        // 确保索引在有效范围内
+        if (index >= 0 && index < this.quoteDataSource.totalCount()) {
+          this.onScrollIndex(index);
+          this.updateBackgroundForCurrentPage(index);
+          this.resetHintTimer(); // 滑动切换时重置提示文字定时器
+        }
       })
       .onGestureSwipe((index: number, extraInfo: SwiperAnimationEvent) => {
         this.resetHintTimer(); // 滑动手势开始时立即重置提示文字定时器
+      })
+      .onAnimationStart((index: number, targetIndex: number, extraInfo: SwiperAnimationEvent) => {
+        // 防止向前滑动超出边界
+        if (targetIndex < 0) {
+          console.log('防止向前滑动超出边界');
+          return;
+        }
+        // 防止向后滑动超出边界
+        if (targetIndex >= this.quoteDataSource.totalCount()) {
+          console.log('防止向后滑动超出边界');
+          return;
+        }
       })
 
       // 顶部标题栏 - 半透明层
@@ -580,12 +688,9 @@ struct Index {
         Text('上下滑动切换 · 长按保存')
           .fontSize(14)
           .fontColor('#ffffff')
-          .opacity(this.hintOpacity)
           .textAlign(TextAlign.Center)
-          .backgroundColor(`rgba(0, 0, 0, ${this.hintOpacity * 0.375})`)
           .padding({ top: 12, bottom: 12, left: 24, right: 24 })
           .borderRadius(12)
-          .backdropBlur(10)
       }
       .width('100%')
       .padding({ left: 20, right: 20, bottom: 30, top: 20 })
