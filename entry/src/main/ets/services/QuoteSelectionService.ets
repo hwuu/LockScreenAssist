@@ -209,12 +209,23 @@ export class QuoteSelectionService {
   }
 
   // 获取推荐的名言列表
-  static async getRecommendedQuotes(count: number = 5): Promise<Quote[]> {
+  static async getRecommendedQuotes(count: number = 5, excludeQuoteTexts?: Set<string>): Promise<Quote[]> {
     const timeContext = QuoteSelectionService.getTimeContext();
     const weather = await QuoteSelectionService.getWeatherInfo();
 
     const allQuotes = QuoteData.getAllQuotes();
-    const scoredQuotes: ScoredQuote[] = allQuotes.map(quote => {
+
+    // 先过滤掉已使用的quotes
+    const availableQuotes = excludeQuoteTexts && excludeQuoteTexts.size > 0
+      ? allQuotes.filter(quote => !excludeQuoteTexts.has(quote.text))
+      : allQuotes;
+
+    // 如果过滤后的quotes不足，记录警告
+    if (availableQuotes.length < count) {
+      console.warn(`可用quotes不足，需要${count}个，只有${availableQuotes.length}个`);
+    }
+
+    const scoredQuotes: ScoredQuote[] = availableQuotes.map(quote => {
       const scoredQuote: ScoredQuote = {
         quote: quote,
         score: QuoteSelectionService.calculateQuoteScore(quote, timeContext, weather) + Math.random() * 10 // 添加随机性
@@ -236,6 +247,6 @@ export class QuoteSelectionService {
       topQuotes[j] = temp;
     }
 
-    return topQuotes.slice(0, count).map(item => item.quote);
+    return topQuotes.slice(0, Math.min(count, availableQuotes.length)).map(item => item.quote);
   }
 }

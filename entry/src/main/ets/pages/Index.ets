@@ -199,6 +199,10 @@ class TextLayoutOptimizer {
 
     console.log(`=== 搜索完成 ===`);
     if (bestResult) {
+      // 为了进一步确保能消除孤行，将 fontSize 减小一点。
+      if (bestResult.fontSize > minSize) {
+        bestResult.fontSize -= 1;
+      }
       console.log(`最终结果 - 字体大小: ${bestResult.fontSize}px, 行数: ${bestResult.lines.length}`);
       console.log(`最终文本:\n${bestResult.text}`);
     }
@@ -668,6 +672,7 @@ struct Index {
   @State wallpaperList: (GeneratedWallpaper | null)[] = [];
   @State optimizedFontSizes: number[] = []; // 存储每页优化后的字体大小
   private textLayoutOptimizer: TextLayoutOptimizer | null = null; // 文本布局优化器
+  private usedQuoteTexts: Set<string> = new Set(); // 已使用的quote文本集合，用于去重
 
   // 测量文本宽度的方法
   private measureTextWidth(config: TextMeasureConfig): number {
@@ -938,9 +943,10 @@ struct Index {
 
       // 如果没有当前名言，使用推荐系统获取第一个
       if (!this.currentQuote) {
-        const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1);
+        const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1, this.usedQuoteTexts);
         if (recommendedQuotes && recommendedQuotes.length > 0) {
           this.currentQuote = recommendedQuotes[0];
+          this.usedQuoteTexts.add(this.currentQuote.text); // 添加到已使用列表
         } else {
           // 如果推荐系统也失败，使用默认名言
           this.currentQuote = {
@@ -982,17 +988,18 @@ struct Index {
 
       // 预加载更多推荐名言
       console.log(`=== 开始加载推荐名言 ===`);
-      const moreQuotes = await QuoteSelectionService.getRecommendedQuotes(5);
+      const moreQuotes = await QuoteSelectionService.getRecommendedQuotes(10, this.usedQuoteTexts);
       if (moreQuotes && moreQuotes.length > 0) {
         for (const quote of moreQuotes) {
           this.quoteDataSource.pushItem(quote);
+          this.usedQuoteTexts.add(quote.text); // 添加到已使用列表
           const wallpaper = await WallpaperService.generateWallpaper(quote);
           this.wallpaperList.push(wallpaper);
 
           // 预处理字体大小
           const quoteFontSize = wallpaper?.style.fontSize || 24;
           // 为每个quote计算动态安全边距和容器宽度
-          const quoteSafetyMargin = quoteFontSize * 4; // 字体大小 * 4
+          const quoteSafetyMargin = quoteFontSize * 5; // 字体大小 * 5
           const quoteRawContainerWidth = this.screenWidth - parentPadding - quoteSafetyMargin;
           const quoteContainerWidth = Math.max(quoteRawContainerWidth, 200);
           const quoteLayout = this.formatQuoteText(quote.text, quoteFontSize, quoteContainerWidth);
@@ -1288,21 +1295,22 @@ struct Index {
       try {
         // 计算还能加载多少条，避免超过100条限制
         const remainingCount = 100 - totalCount;
-        const loadCount = Math.min(5, remainingCount); // 预加载5条或剩余数量
+        const loadCount = Math.min(10, remainingCount); // 预加载5条或剩余数量
         const parentPadding = 48; // 左右各24px padding
 
         for (let i = 0; i < loadCount; i++) {
-          const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1);
+          const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1, this.usedQuoteTexts);
           if (recommendedQuotes && recommendedQuotes.length > 0) {
             const quote = recommendedQuotes[0];
             this.quoteDataSource.pushItem(quote);
+            this.usedQuoteTexts.add(quote.text); // 添加到已使用列表
             const wallpaper = await WallpaperService.generateWallpaper(quote);
             this.wallpaperList.push(wallpaper);
 
             // 预处理字体大小
             const quoteFontSize = wallpaper?.style.fontSize || 24;
             // 为每个quote计算动态安全边距和容器宽度
-            const quoteSafetyMargin = quoteFontSize * 4; // 字体大小 * 4
+            const quoteSafetyMargin = quoteFontSize * 5; // 字体大小 * 5
             const quoteRawContainerWidth = this.screenWidth - parentPadding - quoteSafetyMargin;
             const quoteContainerWidth = Math.max(quoteRawContainerWidth, 200);
             const quoteLayout = this.formatQuoteText(quote.text, quoteFontSize, quoteContainerWidth);
