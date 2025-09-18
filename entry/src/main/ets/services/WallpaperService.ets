@@ -1,5 +1,10 @@
 // 壁纸生成和管理服务
 import { Quote } from '../common/QuoteData';
+import { wallpaper, BusinessError } from '@kit.BasicServicesKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import photoAccessHelper from '@ohos.file.photoAccessHelper';
+import common from '@ohos.app.ability.common';
+import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
 
 export interface WallpaperStyle {
   backgroundColor: string;
@@ -16,6 +21,11 @@ export interface GeneratedWallpaper {
   style: WallpaperStyle;
   imagePath?: string;
   createdAt: Date;
+}
+
+export interface WallpaperOperationResult {
+  lockScreenSuccess: boolean;
+  gallerySuccess: boolean;
 }
 
 export class WallpaperService {
@@ -189,7 +199,7 @@ export class WallpaperService {
   // 生成壁纸
   static async generateWallpaper(quote: Quote): Promise<GeneratedWallpaper> {
     const style = WallpaperService.generateWallpaperStyle(quote);
-    
+
     const wallpaper: GeneratedWallpaper = {
       quote,
       style,
@@ -211,38 +221,22 @@ export class WallpaperService {
     // 3. 绘制文字
     // 4. 保存为图片文件
     // 5. 返回文件路径
-    
+
     const timestamp = Date.now();
     const fileName = `quote_wallpaper_${timestamp}.png`;
     const filePath = `wallpapers/${fileName}`;
-    
+
     // 模拟生成过程
     console.log(`Generating wallpaper: ${fileName}`);
     console.log(`Quote: ${wallpaper.quote.text}`);
     console.log(`Style: ${JSON.stringify(wallpaper.style)}`);
-    
+
     return filePath;
   }
 
-  // 应用壁纸到系统锁屏
-  static async applyWallpaper(wallpaper: GeneratedWallpaper): Promise<boolean> {
-    try {
-      // 在HarmonyOS中，设置锁屏壁纸需要特殊权限
-      // 这里应该调用系统API来设置壁纸
-      console.log(`Applying wallpaper: ${wallpaper.imagePath}`);
-      
-      // 保存当前壁纸信息
-      await WallpaperService.saveCurrentWallpaper(wallpaper);
-      
-      return true;
-    } catch (error) {
-      console.error('Failed to apply wallpaper:', error);
-      return false;
-    }
-  }
 
-  // 保存当前壁纸信息
-  private static async saveCurrentWallpaper(wallpaper: GeneratedWallpaper): Promise<void> {
+  // 保存当前壁纸信息 (公开方法供外部调用)
+  static async saveCurrentWallpaper(wallpaper: GeneratedWallpaper): Promise<void> {
     // 在实际应用中应该使用Preferences API存储
     console.log('Current wallpaper saved:', wallpaper);
   }
@@ -279,5 +273,108 @@ export class WallpaperService {
     } catch (error) {
       console.error('Failed to cleanup old wallpapers:', error);
     }
+  }
+
+  // 设置锁屏壁纸
+  static async setLockScreenWallpaper(imagePath: string): Promise<boolean> {
+    try {
+      console.log('Setting lock screen wallpaper:', imagePath);
+
+      // 获取上下文 - 明确类型为UIAbilityContext
+      const context: common.UIAbilityContext = globalThis.abilityContext;
+      if (!context) {
+        throw new Error('Unable to get application context');
+      }
+
+      // 检查SET_WALLPAPER权限
+      const atManager = abilityAccessCtrl.createAtManager();
+      const grantStatus = await atManager.checkAccessToken(context.applicationInfo.accessTokenId, 'ohos.permission.SET_WALLPAPER');
+
+      if (grantStatus !== abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
+        console.warn('SET_WALLPAPER permission not granted, status:', grantStatus);
+        // 不抛出错误，因为权限可能在module.json5中已声明
+      } else {
+        console.log('SET_WALLPAPER permission granted');
+      }
+
+      // 验证文件是否存在
+      try {
+        const stat: fs.Stat = await fs.stat(imagePath);
+        console.info("get file info succeed, the size of file is " + stat.size);
+      } catch (statError) {
+        console.error("get file info failed with error message: " + (statError as BusinessError).message + ", error code: " + (statError as BusinessError).code);
+        throw new Error('Wallpaper file not accessible');
+      }
+
+      // 使用正确的wallpaper API调用方式
+      // 参考 _helper4_set_wallpaper.txt，使用WallpaperType.WALLPAPER_LOCKSCREEN
+      console.log('Calling wallpaper.setWallpaper with type WALLPAPER_LOCKSCREEN');
+
+      // 使用Promise版本的API调用
+      await wallpaper.setWallpaper(imagePath, wallpaper.WallpaperType.WALLPAPER_LOCKSCREEN);
+
+      console.log('Lock screen wallpaper set successfully:', imagePath);
+      return true;
+    } catch (error) {
+      console.error('Failed to set lock screen wallpaper:', error);
+      console.error('Error details:', JSON.stringify(error));
+      return false;
+    }
+  }
+
+  // 保存到系统图库
+  static async saveToGallery(imagePath: string): Promise<boolean> {
+    try {
+      console.log('Attempting to save image to gallery:', imagePath);
+
+      // 获取上下文 - 明确类型为UIAbilityContext
+      const context: common.UIAbilityContext = globalThis.abilityContext;
+      if (!context) {
+        throw new Error('Unable to get application context');
+      }
+
+      // 参考 _helper.txt 第88行：const helper = photoAccessHelper.getPhotoAccessHelper(context);
+      const helper = photoAccessHelper.getPhotoAccessHelper(context);
+
+      // 参考 _helper.txt 第89行：const uri = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg');
+      const uri: string = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg');
+
+      // 读取源文件内容
+      const sourceFile = await fs.open(imagePath, fs.OpenMode.READ_ONLY);
+      const stat = await fs.stat(imagePath);
+      const buffer = new ArrayBuffer(stat.size);
+      await fs.read(sourceFile.fd, buffer);
+      await fs.close(sourceFile);
+
+      // 参考 _helper.txt 第90-92行：const file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      const file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      await fs.write(file.fd, buffer);
+      await fs.close(file.fd);
+
+      console.log('Image saved to gallery successfully:', uri);
+      return true;
+    } catch (error) {
+      console.error('Failed to save image to gallery:', error);
+      console.error('Error details:', JSON.stringify(error));
+      return false;
+    }
+  }
+
+  // 应用壁纸操作（设置锁屏壁纸和/或保存到图库）
+  static async applyWallpaperOperations(imagePath: string, setLockScreen: boolean, saveToGallery: boolean): Promise<WallpaperOperationResult> {
+    const results: WallpaperOperationResult = {
+      lockScreenSuccess: false,
+      gallerySuccess: false
+    };
+
+    if (setLockScreen) {
+      results.lockScreenSuccess = await WallpaperService.setLockScreenWallpaper(imagePath);
+    }
+
+    if (saveToGallery) {
+      results.gallerySuccess = await WallpaperService.saveToGallery(imagePath);
+    }
+
+    return results;
   }
 }
