@@ -10,7 +10,586 @@ import image from '@ohos.multimedia.image';
 import { BusinessError } from '@ohos.base';
 import common from '@ohos.app.ability.common';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
+import measure from '@ohos.measure';
 // SaveButton is not available in HarmonyOS API, using regular Button instead
+
+// 文本测量配置接口
+interface TextMeasureConfig {
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+  maxWidth: number;
+}
+
+// 文本换行结果接口
+interface TextLayoutResult {
+  text: string;
+  fontSize: number;
+  lines: string[];
+}
+
+// 换行点信息接口
+interface BreakPoint {
+  line: string;
+  nextIndex: number;
+}
+
+// 行信息接口
+interface LineInfo {
+  text: string;
+  width: number;
+  height: number;
+  characterCount: number;
+  hasLeadingPunctuation: boolean;
+  isOrphan: boolean;
+  isAutoWrapped: boolean;
+}
+
+// 文本布局度量接口
+interface TextLayoutMetrics {
+  lines: LineInfo[];
+  totalWidth: number;
+  totalHeight: number;
+  fontSize: number;
+  autoWrapCount: number;
+  orphanCount: number;
+  punctuationViolations: number;
+  originalLineCount: number;
+}
+
+// 权重配置接口
+interface WeightsConfig {
+  r1: number;  // 自动换行比例
+  r2: number;  // 孤行比例
+  r3: number;  // 行宽不均匀度
+  r4: number;  // 长宽比偏差
+  r5: number;  // 空间利用率
+  r6: number;  // 标点位置合规性
+  r7: number;  // 视觉密度均匀性
+  r9: number;  // 视觉焦点分散度
+}
+
+// 字体范围接口
+interface FontRange {
+  min: number;
+  max: number;
+}
+
+// 理想行数范围接口
+interface IdealLineRange {
+  min: number;
+  max: number;
+}
+
+// 优化配置接口
+interface OptimizationConfig {
+  weights: WeightsConfig;
+  fontRange: FontRange;
+  idealLineRange: IdealLineRange;
+  maxIterations: number;
+}
+
+// 文本布局优化器类
+class TextLayoutOptimizer {
+  private config: OptimizationConfig;
+  private screenWidth: number;
+  private screenHeight: number;
+
+  constructor(screenWidth: number, screenHeight: number) {
+    this.screenWidth = screenWidth;
+    this.screenHeight = screenHeight;
+
+    const weights: WeightsConfig = {
+      r1: 0.15,  // 自动换行比例
+      r2: 0.35,  // 孤行比例
+      r3: 0.05,  // 行宽不均匀度
+      r4: 0.05,  // 长宽比偏差
+      r5: 0.15,  // 空间利用率
+      r6: 0.1,   // 标点位置合规性
+      r7: 0.125, // 视觉密度均匀性
+      r9: 0.025  // 视觉焦点分散度
+    };
+
+    const fontRange: FontRange = { min: 14, max: 40 };
+    const idealLineRange: IdealLineRange = { min: 5, max: 12 };
+
+    this.config = {
+      weights: weights,
+      fontRange: fontRange,
+      idealLineRange: idealLineRange,
+      maxIterations: 50
+    };
+  }
+
+  // 主要优化方法
+  optimizeLayout(text: string, containerWidth: number, baseFontSize: number): TextLayoutResult {
+    let bestScore = Infinity;
+    let bestResult: TextLayoutResult | null = null;
+
+    // 两阶段搜索：粗搜索 + 细搜索
+    const coarseRange = this.getCoarseSearchRange(baseFontSize);
+    let coarseBest = this.searchOptimalFontSize(text, containerWidth, coarseRange.min, coarseRange.max, 2);
+
+    // 在最佳区间进行细搜索
+    const fineRange: FontRange = {
+      min: Math.max(this.config.fontRange.min, coarseBest.fontSize - 4),
+      max: Math.min(this.config.fontRange.max, coarseBest.fontSize + 4)
+    };
+    let fineBest = this.searchOptimalFontSize(text, containerWidth, fineRange.min, fineRange.max, 0.5);
+
+    return fineBest;
+  }
+
+  // 搜索最佳字体大小
+  private searchOptimalFontSize(text: string, containerWidth: number, minSize: number, maxSize: number, step: number): TextLayoutResult {
+    let bestScore = Infinity;
+    let bestResult: TextLayoutResult | null = null;
+
+    console.log(`=== 开始搜索最佳字体大小 ===`);
+    console.log(`文本: "${text}"`);
+    console.log(`容器宽度: ${containerWidth}px`);
+    console.log(`字体范围: ${minSize}px - ${maxSize}px, 步长: ${step}px`);
+
+    for (let fontSize = minSize; fontSize <= maxSize; fontSize += step) {
+      const metrics = this.measureText(text, fontSize, containerWidth);
+      const score = this.calculateScore(metrics);
+
+      const r1 = this.calculateR1(metrics);
+      const r2 = this.calculateR2(metrics);
+      const r3 = this.calculateR3(metrics);
+      const r4 = this.calculateR4(metrics);
+      const r5 = this.calculateR5(metrics);
+      const r6 = this.calculateR6(metrics);
+      const r7 = this.calculateR7(metrics);
+      const r9 = this.calculateR9(metrics);
+
+      console.log(`--- 字体大小 ${fontSize}px ---`);
+      console.log(`总行数: ${metrics.lines.length}`);
+      console.log(`孤行数: ${metrics.orphanCount}`);
+      console.log(`自动换行数: ${metrics.autoWrapCount}`);
+      console.log(`标点违规数: ${metrics.punctuationViolations}`);
+      console.log(`文本区域: ${metrics.totalWidth.toFixed(0)}x${metrics.totalHeight.toFixed(0)}px`);
+      console.log(`各指标评分:`);
+      console.log(`  r1(自动换行): ${r1.toFixed(4)} * ${this.config.weights.r1} = ${(r1 * this.config.weights.r1).toFixed(4)}`);
+      console.log(`  r2(孤行): ${r2.toFixed(4)} * ${this.config.weights.r2} = ${(r2 * this.config.weights.r2).toFixed(4)}`);
+      console.log(`  r3(行宽不均): ${r3.toFixed(4)} * ${this.config.weights.r3} = ${(r3 * this.config.weights.r3).toFixed(4)}`);
+      console.log(`  r4(长宽比): ${r4.toFixed(4)} * ${this.config.weights.r4} = ${(r4 * this.config.weights.r4).toFixed(4)}`);
+      console.log(`  r5(空间利用): ${r5.toFixed(4)} * ${this.config.weights.r5} = ${(r5 * this.config.weights.r5).toFixed(4)}`);
+      console.log(`  r6(标点位置): ${r6.toFixed(4)} * ${this.config.weights.r6} = ${(r6 * this.config.weights.r6).toFixed(4)}`);
+      console.log(`  r7(密度均匀): ${r7.toFixed(4)} * ${this.config.weights.r7} = ${(r7 * this.config.weights.r7).toFixed(4)}`);
+      console.log(`  r9(焦点分散): ${r9.toFixed(4)} * ${this.config.weights.r9} = ${(r9 * this.config.weights.r9).toFixed(4)}`);
+      console.log(`综合评分: ${score.toFixed(4)}`);
+
+      // 输出每行的详细信息
+      metrics.lines.forEach((line, index) => {
+        console.log(`行${index + 1}: "${line.text}" (宽度:${line.width.toFixed(1)}px, 字符数:${line.characterCount}, 孤行:${line.isOrphan}, 自动换行:${line.isAutoWrapped})`);
+      });
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestResult = {
+          text: metrics.lines.map(line => line.text).join('\n'),
+          fontSize: fontSize,
+          lines: metrics.lines.map(line => line.text)
+        };
+
+        console.log(`✓ 新的最佳结果! 字体大小: ${fontSize}px, 评分: ${score.toFixed(4)}`);
+      }
+    }
+
+    console.log(`=== 搜索完成 ===`);
+    if (bestResult) {
+      console.log(`最终结果 - 字体大小: ${bestResult.fontSize}px, 行数: ${bestResult.lines.length}`);
+      console.log(`最终文本:\n${bestResult.text}`);
+    }
+
+    return bestResult || {
+      text: text,
+      fontSize: minSize,
+      lines: [text]
+    };
+  }
+
+  // 获取粗搜索范围
+  private getCoarseSearchRange(baseFontSize: number): FontRange {
+    const range = 8; // 基准字体大小上下8px
+    const result: FontRange = {
+      min: Math.max(this.config.fontRange.min, baseFontSize - range),
+      max: Math.min(this.config.fontRange.max, baseFontSize + range)
+    };
+    return result;
+  }
+
+  // 计算综合评分
+  private calculateScore(metrics: TextLayoutMetrics): number {
+    const r1 = this.calculateR1(metrics);
+    const r2 = this.calculateR2(metrics);
+    const r3 = this.calculateR3(metrics);
+    const r4 = this.calculateR4(metrics);
+    const r5 = this.calculateR5(metrics);
+    const r6 = this.calculateR6(metrics);
+    const r7 = this.calculateR7(metrics);
+    const r9 = this.calculateR9(metrics);
+
+    return this.config.weights.r1 * r1 +
+           this.config.weights.r2 * r2 +
+           this.config.weights.r3 * r3 +
+           this.config.weights.r4 * r4 +
+           this.config.weights.r5 * r5 +
+           this.config.weights.r6 * r6 +
+           this.config.weights.r7 * r7 +
+           this.config.weights.r9 * r9;
+  }
+
+  // 核心文本测量方法
+  private measureText(text: string, fontSize: number, containerWidth: number): TextLayoutMetrics {
+    console.log(`>>> measureText开始: 字体${fontSize}px, 容器宽度${containerWidth}px`);
+    console.log(`原始文本: "${text}"`);
+
+    // 1. 首先应用强制标点换行逻辑，获取原始行数
+    const punctuationFormatted = text
+      .replace(/([，,])\s*/g, '$1\n')
+      .replace(/([。！？；：])\s*/g, '$1\n \n')
+      .replace(/([.!?;:])\s*/g, '$1\n \n')
+      .replace(/\n{3,}/g, '\n \n')
+      .replace(/\s*\n\s*/g, '\n')
+      .trim();
+
+    console.log(`标点换行后: "${punctuationFormatted}"`);
+
+    const originalLines = punctuationFormatted.split('\n').filter(line => line.trim().length > 0);
+    const originalLineCount = originalLines.length;
+
+    console.log(`原始行数: ${originalLineCount}`);
+    originalLines.forEach((line, index) => {
+      console.log(`原始行${index + 1}: "${line}"`);
+    });
+
+    // 2. 对每一行进行智能换行处理
+    let allLines: LineInfo[] = [];
+    let autoWrapCount = 0;
+    let maxWidth = 0;
+    let totalHeight = 0;
+
+    for (let i = 0; i < originalLines.length; i++) {
+      const originalLine = originalLines[i];
+      if (originalLine.trim().length === 0) continue;
+
+      // 测量这一行在容器宽度下的换行情况
+      const wrappedLines = this.wrapSingleLine(originalLine, fontSize, containerWidth);
+
+      for (let j = 0; j < wrappedLines.length; j++) {
+        const lineText = wrappedLines[j];
+        const lineWidth = this.measureSingleLineWidth(lineText, fontSize);
+        const lineHeight = fontSize * 1.2; // 行高系数
+
+        const lineInfo: LineInfo = {
+          text: lineText,
+          width: lineWidth,
+          height: lineHeight,
+          characterCount: lineText.length,
+          hasLeadingPunctuation: this.hasLeadingPunctuation(lineText),
+          isOrphan: this.isOrphanLine(lineText),
+          isAutoWrapped: j > 0 // 除了第一行，其他都是自动换行产生的
+        };
+
+        allLines.push(lineInfo);
+        maxWidth = Math.max(maxWidth, lineWidth);
+        totalHeight += lineHeight;
+
+        // 统计自动换行数量
+        if (j > 0) {
+          autoWrapCount++;
+        }
+      }
+    }
+
+    // 3. 统计各种指标
+    const orphanCount = allLines.filter(line => line.isOrphan).length;
+    const punctuationViolations = allLines.filter(line => line.hasLeadingPunctuation).length;
+
+    return {
+      lines: allLines,
+      totalWidth: maxWidth,
+      totalHeight: totalHeight,
+      fontSize: fontSize,
+      autoWrapCount: autoWrapCount,
+      orphanCount: orphanCount,
+      punctuationViolations: punctuationViolations,
+      originalLineCount: originalLineCount
+    };
+  }
+
+  // 对单行文本进行智能换行
+  private wrapSingleLine(text: string, fontSize: number, maxWidth: number): string[] {
+    if (!text || text.trim().length === 0) return [];
+
+    console.log(`>>> wrapSingleLine开始: "${text}", 字体${fontSize}px, 最大宽度${maxWidth}px`);
+
+    const lines: string[] = [];
+    let currentLine = '';
+    let i = 0;
+
+    // 标点符号规则
+    const punctuationAtStart = /^[，。！？；：、）】」』》\"'…]/;
+    const punctuationAtEnd = /[（【「』《\"']$/;
+
+    while (i < text.length) {
+      const char = text[i];
+      const testLine = currentLine + char;
+      const lineWidth = this.measureSingleLineWidth(testLine, fontSize);
+
+      console.log(`字符'${char}': 测试行"${testLine}" 宽度${lineWidth.toFixed(1)}px, 最大宽度${maxWidth}px`);
+
+      if (lineWidth > maxWidth && currentLine.length > 0) {
+        console.log(`需要换行! 当前行"${currentLine}" 宽度超限`);
+        // 需要换行，检查换行规则
+        const breakResult = this.findOptimalBreakPointNew(
+          text, currentLine, i, fontSize, maxWidth
+        );
+
+        lines.push(breakResult.line);
+        console.log(`添加行: "${breakResult.line}"`);
+        currentLine = '';
+        i = breakResult.nextIndex;
+        continue;
+      }
+
+      currentLine += char;
+      i++;
+    }
+
+    if (currentLine.length > 0) {
+      lines.push(currentLine);
+      console.log(`添加最后一行: "${currentLine}"`);
+    }
+
+    console.log(`<<< wrapSingleLine完成: 总共${lines.length}行`);
+    return lines.length > 0 ? lines : [text];
+  }
+
+  // 测量单行文本宽度
+  private measureSingleLineWidth(text: string, fontSize: number): number {
+    try {
+      const textMetrics = measure.measureTextSize({
+        textContent: text,
+        fontSize: fontSize,
+        fontFamily: 'HarmonyOS Sans'
+      });
+
+      const width = textMetrics.width;
+      let result: number;
+
+      if (typeof width === 'number') {
+        result = width;
+      } else if (typeof width === 'string') {
+        const numericValue = parseFloat(width);
+        result = isNaN(numericValue) ? text.length * fontSize * 0.9 : numericValue;
+      } else {
+        result = text.length * fontSize * 0.9;
+      }
+
+      /*
+      // 对关键文本（如我们的测试句子）输出详细日志
+      if (text.includes('一切群众的实际生活问题') || text.includes('都是我们应当注意的问题')) {
+        console.log(`🔍 关键文本测量: "${text}" 字体${fontSize}px = ${result.toFixed(1)}px (原始值: ${width}, 类型: ${typeof width})`);
+      }
+      */
+
+      // 添加详细日志用于调试
+      if (text.length <= 3) { // 只对短文本输出详细日志，避免日志过多
+        console.log(`measureSingleLineWidth: "${text}" 字体${fontSize}px = ${result.toFixed(1)}px (原始值: ${width}, 类型: ${typeof width})`);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Failed to measure text width:', error);
+      const fallback = text.length * fontSize * 0.9;
+      console.log(`measureSingleLineWidth fallback: "${text}" 字体${fontSize}px = ${fallback.toFixed(1)}px`);
+      return fallback;
+    }
+  }
+
+  // 新的寻找最佳换行点方法
+  private findOptimalBreakPointNew(
+    fullText: string,
+    currentLine: string,
+    currentIndex: number,
+    fontSize: number,
+    maxWidth: number
+  ): BreakPoint {
+    const nextChar = fullText[currentIndex] || '';
+    const punctuationAtStart = /[，。！？；：、）】」』》\"'…]/;
+    const punctuationAtEnd = /[（【「』《\"']/;
+
+    if (punctuationAtStart.test(nextChar)) {
+      const testLine = currentLine + nextChar;
+      const totalWidth = this.measureSingleLineWidth(testLine, fontSize);
+
+      if (totalWidth <= maxWidth) {
+        return {
+          line: testLine,
+          nextIndex: currentIndex + 1
+        };
+      } else {
+        return this.findPreviousBreakPointNew(currentLine, currentIndex, fontSize, maxWidth);
+      }
+    }
+
+    const lastChar = currentLine[currentLine.length - 1] || '';
+    if (punctuationAtEnd.test(lastChar)) {
+      return this.findPreviousBreakPointNew(currentLine, currentIndex, fontSize, maxWidth);
+    }
+
+    return {
+      line: currentLine,
+      nextIndex: currentIndex
+    };
+  }
+
+  // 新的向前回退寻找断点方法
+  private findPreviousBreakPointNew(
+    currentLine: string,
+    currentIndex: number,
+    fontSize: number,
+    maxWidth: number
+  ): BreakPoint {
+    for (let i = currentLine.length - 1; i > 0; i--) {
+      const truncatedLine = currentLine.substring(0, i);
+      const char = currentLine[i];
+
+      const punctuationAtEnd = /[（【「』《\"']/;
+      const punctuationAtStart = /[，。！？；：、）】」』》\"'…]/;
+
+      if (!punctuationAtEnd.test(truncatedLine[truncatedLine.length - 1] || '') &&
+          !punctuationAtStart.test(char)) {
+
+        const truncatedWidth = this.measureSingleLineWidth(truncatedLine, fontSize);
+
+        if (truncatedWidth <= maxWidth) {
+          return {
+            line: truncatedLine,
+            nextIndex: currentIndex - (currentLine.length - i)
+          };
+        }
+      }
+    }
+
+    return {
+      line: currentLine,
+      nextIndex: currentIndex
+    };
+  }
+
+  // 检查是否有行首标点
+  private hasLeadingPunctuation(line: string): boolean {
+    const punctuationAtStart = /^[，。！？；：、）】」』》\"'…]/;
+    return punctuationAtStart.test(line);
+  }
+
+  // 检查是否为孤行
+  private isOrphanLine(line: string): boolean {
+    const effectiveLength = line.replace(/[，。！？；：、（）【】「」『』《》\"'\"'…]/g, '').length;
+    const isOrphan = effectiveLength > 0 && effectiveLength < 3;
+    if (isOrphan) {
+      console.log(`检测到孤行: "${line}" (有效字符数: ${effectiveLength})`);
+    }
+    return isOrphan;
+  }
+
+  // r1: 自动换行比例 = (自动换行数 + 原始换行数) / 渲染后总行数
+  private calculateR1(metrics: TextLayoutMetrics): number {
+    if (metrics.lines.length === 0) return 0;
+    return (metrics.autoWrapCount + metrics.originalLineCount) / metrics.lines.length;
+  }
+
+  // r2: 孤行比例 = 孤行数量 / 渲染后总行数
+  private calculateR2(metrics: TextLayoutMetrics): number {
+    if (metrics.lines.length === 0) return 0;
+    return metrics.orphanCount / metrics.lines.length;
+  }
+
+  // r6: 标点符号位置合规性 = 行首标点数量 / 总行数
+  private calculateR6(metrics: TextLayoutMetrics): number {
+    if (metrics.lines.length === 0) return 0;
+    return metrics.punctuationViolations / metrics.lines.length;
+  }
+
+  // r7: 视觉密度均匀性 = 各行字符密度方差 / 平均字符密度
+  private calculateR7(metrics: TextLayoutMetrics): number {
+    if (metrics.lines.length <= 1) return 0;
+
+    // 计算每行的字符密度（字符数/行宽度）
+    const densities: number[] = [];
+    for (const line of metrics.lines) {
+      if (line.width > 0) {
+        densities.push(line.characterCount / line.width);
+      }
+    }
+
+    if (densities.length <= 1) return 0;
+
+    // 计算平均密度
+    const meanDensity = densities.reduce((sum, d) => sum + d, 0) / densities.length;
+    if (meanDensity === 0) return 0;
+
+    // 计算方差
+    const variance = densities.reduce((sum, d) => sum + Math.pow(d - meanDensity, 2), 0) / densities.length;
+
+    return variance / meanDensity;
+  }
+
+  // r3: 行宽不均匀度 = 1 - (最短行宽度 / 最宽行宽度)
+  private calculateR3(metrics: TextLayoutMetrics): number {
+    if (metrics.lines.length <= 1) return 0;
+
+    let minWidth = Infinity;
+    let maxWidth = 0;
+
+    for (const line of metrics.lines) {
+      if (line.width > 0) {
+        minWidth = Math.min(minWidth, line.width);
+        maxWidth = Math.max(maxWidth, line.width);
+      }
+    }
+
+    if (maxWidth === 0 || minWidth === Infinity) return 0;
+    return 1 - (minWidth / maxWidth);
+  }
+
+  // r4: 长宽比偏差 = abs(渲染后文本区域长宽比 - 屏幕长宽比) / 屏幕长宽比
+  private calculateR4(metrics: TextLayoutMetrics): number {
+    if (metrics.totalWidth === 0 || metrics.totalHeight === 0 || this.screenWidth === 0 || this.screenHeight === 0) return 0;
+
+    // 计算文本区域长宽比（高/宽）
+    const textAspectRatio = metrics.totalHeight / metrics.totalWidth;
+
+    // 计算屏幕长宽比（高/宽）
+    const screenAspectRatio = this.screenHeight / this.screenWidth;
+
+    if (screenAspectRatio === 0) return 0;
+    return Math.abs(textAspectRatio - screenAspectRatio) / screenAspectRatio;
+  }
+
+  // r5: 空间利用率 = (屏幕面积 - 渲染后文本区域面积) / 屏幕面积
+  private calculateR5(metrics: TextLayoutMetrics): number {
+    if (this.screenWidth === 0 || this.screenHeight === 0) return 0;
+
+    const screenArea = this.screenWidth * this.screenHeight;
+    const textArea = metrics.totalWidth * metrics.totalHeight;
+
+    return (screenArea - textArea) / screenArea;
+  }
+
+  // r9: 视觉焦点分散度 = |理想行数 - 实际行数| / 理想行数
+  private calculateR9(metrics: TextLayoutMetrics): number {
+    const actualLines = metrics.lines.length;
+    const idealLines = (this.config.idealLineRange.min + this.config.idealLineRange.max) / 2;
+
+    if (idealLines === 0) return 0;
+    return Math.abs(idealLines - actualLines) / idealLines;
+  }
+}
 
 // 数据源类实现，参考helper6_page_turn.txt第68-74行
 class QuoteDataSource implements IDataSource {
@@ -58,7 +637,7 @@ class QuoteDataSource implements IDataSource {
 @Entry
 @Component
 struct Index {
-  @State currentQuote: Quote = QuoteData.getRandomQuote();
+  @State currentQuote: Quote | null = null;
   @State currentWallpaper: GeneratedWallpaper | null = null;
   @State isLoading: boolean = false;
   @State previewBackground: string = '';
@@ -87,9 +666,250 @@ struct Index {
   @State currentPageIndex: number = 0;
   @State quoteDataSource: QuoteDataSource = new QuoteDataSource();
   @State wallpaperList: (GeneratedWallpaper | null)[] = [];
+  @State optimizedFontSizes: number[] = []; // 存储每页优化后的字体大小
+  private textLayoutOptimizer: TextLayoutOptimizer | null = null; // 文本布局优化器
+
+  // 测量文本宽度的方法
+  private measureTextWidth(config: TextMeasureConfig): number {
+    try {
+      const textMetrics = measure.measureTextSize({
+        textContent: config.text,
+        fontSize: config.fontSize,
+        fontFamily: config.fontFamily
+      });
+      // 将Length类型转换为number
+      const width = textMetrics.width;
+      if (typeof width === 'number') {
+        return width;
+      } else if (typeof width === 'string') {
+        // 如果是字符串形式（如"100px"），提取数值部分
+        const numericValue = parseFloat(width);
+        return isNaN(numericValue) ? config.text.length * config.fontSize * 0.9 : numericValue;
+      } else {
+        // 其他情况降级到估算
+        return config.text.length * config.fontSize * 0.9;
+      }
+    } catch (error) {
+      console.error('Failed to measure text:', error);
+      // 降级到估算方法
+      return config.text.length * config.fontSize * 0.9;
+    }
+  }
+
+  // 智能文本换行方法
+  private smartTextWrap(text: string, fontSize: number, maxWidth: number): string[] {
+    const lines: string[] = [];
+    let currentLine = '';
+    let i = 0;
+
+    // 定义标点符号规则
+    const punctuationAtStart = /^[，。！？；：、）】」』》"'…]/;
+    const punctuationAtEnd = /[（【「』《"']$/;
+
+    while (i < text.length) {
+      const char = text[i];
+      const testLine = currentLine + char;
+
+      const lineWidth = this.measureTextWidth({
+        text: testLine,
+        fontSize: fontSize,
+        fontFamily: 'HarmonyOS Sans',
+        maxWidth: maxWidth
+      });
+
+      // 检查是否超出行宽
+      if (lineWidth > maxWidth && currentLine.length > 0) {
+        // 需要换行，检查换行规则
+        const breakResult = this.findOptimalBreakPoint(
+          text, currentLine, i, fontSize, maxWidth
+        );
+
+        lines.push(breakResult.line);
+        currentLine = '';
+        i = breakResult.nextIndex;
+        continue;
+      }
+
+      currentLine += char;
+      i++;
+    }
+
+    if (currentLine.length > 0) {
+      lines.push(currentLine);
+    }
+
+    return lines;
+  }
+
+  // 寻找最佳换行点
+  private findOptimalBreakPoint(
+    fullText: string,
+    currentLine: string,
+    currentIndex: number,
+    fontSize: number,
+    maxWidth: number
+  ): BreakPoint {
+
+    // 检查下一个字符是否为标点符号（避行首）
+    const nextChar = fullText[currentIndex] || '';
+    const punctuationAtStart = /[，。！？；：、）】」』》"'…]/;
+    const punctuationAtEnd = /[（【「』《"']/;
+
+    if (punctuationAtStart.test(nextChar)) {
+      // 下一个字符是标点符号，尝试将其加入当前行
+      const testLine = currentLine + nextChar;
+      const totalWidth = this.measureTextWidth({
+        text: testLine,
+        fontSize: fontSize,
+        fontFamily: 'HarmonyOS Sans',
+        maxWidth: maxWidth
+      });
+
+      if (totalWidth <= maxWidth) {
+        return {
+          line: testLine,
+          nextIndex: currentIndex + 1
+        };
+      } else {
+        // 标点放不下，向前回退
+        return this.findPreviousBreakPoint(currentLine, currentIndex, fontSize, maxWidth);
+      }
+    }
+
+    // 检查当前行末尾是否为不能断行的标点
+    const lastChar = currentLine[currentLine.length - 1] || '';
+    if (punctuationAtEnd.test(lastChar)) {
+      return this.findPreviousBreakPoint(currentLine, currentIndex, fontSize, maxWidth);
+    }
+
+    // 正常断行
+    return {
+      line: currentLine,
+      nextIndex: currentIndex
+    };
+  }
+
+  // 向前回退寻找断点
+  private findPreviousBreakPoint(
+    currentLine: string,
+    currentIndex: number,
+    fontSize: number,
+    maxWidth: number
+  ): BreakPoint {
+
+    // 从当前行末尾向前寻找合适的断点
+    for (let i = currentLine.length - 1; i > 0; i--) {
+      const truncatedLine = currentLine.substring(0, i);
+      const char = currentLine[i];
+
+      const punctuationAtEnd = /[（【「』《"']/;
+      const punctuationAtStart = /[，。！？；：、）】」』》"'…]/;
+
+      if (!punctuationAtEnd.test(truncatedLine[truncatedLine.length - 1] || '') &&
+          !punctuationAtStart.test(char)) {
+
+        const truncatedWidth = this.measureTextWidth({
+          text: truncatedLine,
+          fontSize: fontSize,
+          fontFamily: 'HarmonyOS Sans',
+          maxWidth: maxWidth
+        });
+
+        if (truncatedWidth <= maxWidth) {
+          return {
+            line: truncatedLine,
+            nextIndex: currentIndex - (currentLine.length - i)
+          };
+        }
+      }
+    }
+
+    // 实在找不到合适断点，强制断行
+    return {
+      line: currentLine,
+      nextIndex: currentIndex
+    };
+  }
+
+  // 检查是否有孤行
+  private hasOrphanLines(lines: string[]): boolean {
+    return lines.some(line => {
+      const effectiveLength = line.replace(/[，。！？；：、（）【】「」『』《》"'"'…]/g, '').length;
+      return effectiveLength > 0 && effectiveLength < 3;
+    });
+  }
+
+  // 检查是否有标点符号在行首
+  private hasPunctuationAtLineStart(lines: string[]): boolean {
+    const punctuationAtStart = /^[，。！？；：、）】」』》"'…]/;
+    return lines.some(line => punctuationAtStart.test(line));
+  }
+
+  // 优化字体大小以获得最佳排版
+  private optimizeFontSizeForLayout(
+    text: string,
+    containerWidth: number,
+    initialFontSize: number,
+    maxLines: number = 20
+  ): number {
+
+    let fontSize = initialFontSize;
+    let attempts = 0;
+    const maxAttempts = 8;
+
+    while (attempts < maxAttempts) {
+      const lines = this.smartTextWrap(text, fontSize, containerWidth);
+
+      // 检查是否符合排版要求
+      if (this.isLayoutAcceptable(lines, maxLines)) {
+        break;
+      }
+
+      // 如果行数太多或有孤行，减小字体
+      if (lines.length > maxLines || this.hasOrphanLines(lines)) {
+        fontSize = Math.max(fontSize - 1, 14); // 最小14px
+      } else {
+        // 可以尝试增大字体
+        fontSize = Math.min(fontSize + 1, 40); // 最大40px
+      }
+
+      attempts++;
+    }
+
+    return fontSize;
+  }
+
+  // 检查排版是否可接受
+  private isLayoutAcceptable(lines: string[], maxLines: number): boolean {
+    // 检查孤行
+    if (this.hasOrphanLines(lines)) return false;
+
+    // 检查标点符号位置
+    if (this.hasPunctuationAtLineStart(lines)) return false;
+
+    // 检查行数是否合理
+    if (lines.length > maxLines) return false;
+
+    return true;
+  }
 
   async aboutToAppear() {
+    // 确保屏幕尺寸首先被正确获取
     await this.getScreenRatio();
+
+    // 验证屏幕尺寸获取是否成功
+    console.log(`aboutToAppear - 屏幕尺寸确认: ${this.screenWidth}x${this.screenHeight}`);
+
+    // 如果屏幕尺寸获取失败，使用默认值
+    if (this.screenWidth === 0 || this.screenHeight === 0) {
+      console.warn('屏幕尺寸获取失败，使用默认值');
+      this.screenWidth = 360;
+      this.screenHeight = 640;
+    }
+
+    // 初始化文本布局优化器
+    this.textLayoutOptimizer = new TextLayoutOptimizer(this.screenWidth, this.screenHeight);
+
     await this.loadConfig();
     await this.loadQuoteSource();
     await this.initializeQuoteList();
@@ -101,29 +921,84 @@ struct Index {
   // 初始化名言列表，参考helper6_page_turn.txt第57-65行
   async initializeQuoteList() {
     try {
+      console.log(`=== 初始化名言列表 ===`);
+      console.log(`屏幕宽度: ${this.screenWidth}px, 屏幕高度: ${this.screenHeight}px`);
+
+      // 计算Text组件的实际可用宽度
+      // Text组件父容器有 .padding(24)，即左右各24px
+      // Text组件自身没有额外的padding/margin（除了bottom margin）
+      // 安全边距现在根据字体大小动态计算：字体大小 * 4
+      const parentPadding = 48; // 左右各24px
+
+      console.log(`屏幕宽度: ${this.screenWidth}px`);
+      console.log(`父容器padding: ${parentPadding}px`);
+
+      // 加载当前壁纸
+      await this.loadCurrentWallpaper();
+
+      // 如果没有当前名言，使用推荐系统获取第一个
+      if (!this.currentQuote) {
+        const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1);
+        if (recommendedQuotes && recommendedQuotes.length > 0) {
+          this.currentQuote = recommendedQuotes[0];
+        } else {
+          // 如果推荐系统也失败，使用默认名言
+          this.currentQuote = {
+            text: "一切群众的实际生活问题，都是我们应当注意的问题",
+            author: "毛泽东",
+            category: "群众",
+            source: "《关心群众生活，注意工作方法》"
+          };
+        }
+      }
+
       // 先加载当前名言
       this.quoteDataSource.pushItem(this.currentQuote);
-      this.wallpaperList.push(await WallpaperService.getCurrentWallpaper());
 
-      // 加载推荐名言
-      if (this.config) {
-        for (let i = 0; i < 10; i++) { // 预加载10条名言
-          try {
-            const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1);
-            if (recommendedQuotes && recommendedQuotes.length > 0) {
-              const quote = recommendedQuotes[0];
-              this.quoteDataSource.pushItem(quote);
-              const wallpaper = await WallpaperService.generateWallpaper(quote);
-              this.wallpaperList.push(wallpaper);
-            }
-          } catch (error) {
-            console.error('Failed to load recommended quote:', error);
-            // 加载默认名言作为备选
-            const fallbackQuote = QuoteData.getRandomQuote();
-            this.quoteDataSource.pushItem(fallbackQuote);
-            this.wallpaperList.push(null);
-          }
+      // 如果没有当前壁纸，生成一个
+      if (!this.currentWallpaper) {
+        this.currentWallpaper = await WallpaperService.generateWallpaper(this.currentQuote);
+      }
+      this.wallpaperList.push(this.currentWallpaper);
+
+      // 预处理当前名言的字体大小
+      const initialFontSize = this.currentWallpaper?.style.fontSize || 24;
+      console.log(`使用初始字体大小: ${initialFontSize}px`);
+
+      // 重新计算基于字体大小的安全边距和容器宽度
+      const dynamicSafetyMargin = initialFontSize * 5; // 字体大小 * 5
+      const dynamicRawContainerWidth = this.screenWidth - parentPadding - dynamicSafetyMargin;
+      const dynamicContainerWidth = Math.max(dynamicRawContainerWidth, 200);
+
+      console.log(`动态安全边距: ${dynamicSafetyMargin}px (基于字体${initialFontSize}px)`);
+      console.log(`动态容器宽度: ${dynamicContainerWidth}px`);
+
+      const textLayout = this.formatQuoteText(this.currentQuote.text, initialFontSize, dynamicContainerWidth);
+      this.optimizedFontSizes.push(textLayout.fontSize);
+
+      console.log(`=== 当前quote处理完成 ===`);
+      console.log(`优化后字体大小: ${textLayout.fontSize}px`);
+      console.log(`优化后文本:\n${textLayout.text}`);
+
+      // 预加载更多推荐名言
+      console.log(`=== 开始加载推荐名言 ===`);
+      const moreQuotes = await QuoteSelectionService.getRecommendedQuotes(5);
+      if (moreQuotes && moreQuotes.length > 0) {
+        for (const quote of moreQuotes) {
+          this.quoteDataSource.pushItem(quote);
+          const wallpaper = await WallpaperService.generateWallpaper(quote);
+          this.wallpaperList.push(wallpaper);
+
+          // 预处理字体大小
+          const quoteFontSize = wallpaper?.style.fontSize || 24;
+          // 为每个quote计算动态安全边距和容器宽度
+          const quoteSafetyMargin = quoteFontSize * 4; // 字体大小 * 4
+          const quoteRawContainerWidth = this.screenWidth - parentPadding - quoteSafetyMargin;
+          const quoteContainerWidth = Math.max(quoteRawContainerWidth, 200);
+          const quoteLayout = this.formatQuoteText(quote.text, quoteFontSize, quoteContainerWidth);
+          this.optimizedFontSizes.push(quoteLayout.fontSize);
         }
+        console.log(`加载了${moreQuotes.length}条推荐名言`);
       }
     } catch (error) {
       console.error('Failed to initialize quote list:', error);
@@ -313,7 +1188,7 @@ struct Index {
   }
 
   // 获取当前页面的名言和壁纸
-  getCurrentQuote(): Quote {
+  getCurrentQuote(): Quote | null {
     if (this.quoteDataSource.totalCount() > this.currentPageIndex) {
       return this.quoteDataSource.getData(this.currentPageIndex);
     }
@@ -414,6 +1289,7 @@ struct Index {
         // 计算还能加载多少条，避免超过100条限制
         const remainingCount = 100 - totalCount;
         const loadCount = Math.min(5, remainingCount); // 预加载5条或剩余数量
+        const parentPadding = 48; // 左右各24px padding
 
         for (let i = 0; i < loadCount; i++) {
           const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1);
@@ -422,6 +1298,15 @@ struct Index {
             this.quoteDataSource.pushItem(quote);
             const wallpaper = await WallpaperService.generateWallpaper(quote);
             this.wallpaperList.push(wallpaper);
+
+            // 预处理字体大小
+            const quoteFontSize = wallpaper?.style.fontSize || 24;
+            // 为每个quote计算动态安全边距和容器宽度
+            const quoteSafetyMargin = quoteFontSize * 4; // 字体大小 * 4
+            const quoteRawContainerWidth = this.screenWidth - parentPadding - quoteSafetyMargin;
+            const quoteContainerWidth = Math.max(quoteRawContainerWidth, 200);
+            const quoteLayout = this.formatQuoteText(quote.text, quoteFontSize, quoteContainerWidth);
+            this.optimizedFontSizes.push(quoteLayout.fontSize);
           }
         }
 
@@ -557,24 +1442,55 @@ struct Index {
   }
 
   /**
-   * 保存ArrayBuffer到图库 - 参考_helper.txt第86-94行的实现
-   * @param buffer：图片ArrayBuffer
+   * 智能格式化名言文本，避免孤行和标点符号行首
+   * @param text 原始文本
+   * @param fontSize 字体大小
+   * @param containerWidth 容器宽度
+   * @returns 格式化后的文本布局结果
    */
-  formatQuoteText(text: string): string {
-    // 按照中英文标点符号分行
-    let formattedText = text
-      // 逗号后单换行
-      .replace(/([，,])\s*/g, '$1\n')
-      // 其他中文标点符号后双换行（空一行）
-      .replace(/([。！？；：])\s*/g, '$1\n\n')
-      // 其他英文标点符号后双换行（空一行）
-      .replace(/([.!?;:])\s*/g, '$1\n\n')
-      // 清理多余的换行和空格
-      .replace(/\n{3,}/g, '\n\n') // 最多保留双换行
-      .replace(/\s*\n\s*/g, '\n')
-      .trim();
+  formatQuoteText(text: string, fontSize?: number, containerWidth?: number): TextLayoutResult {
+    // 如果没有提供参数或优化器未初始化，使用简单处理
+    if (!fontSize || !containerWidth || !this.textLayoutOptimizer) {
+      // 降级到原有的简单换行逻辑
+      const simpleFormatted = text
+        .replace(/([，,])\s*/g, '$1\n')
+        .replace(/([。！？；：])\s*/g, '$1\n \n')
+        .replace(/([.!?;:])\s*/g, '$1\n \n')
+        .replace(/\n{3,}/g, '\n \n')
+        .replace(/\s*\n\s*/g, '\n')
+        .trim();
 
-    return formattedText;
+      return {
+        text: simpleFormatted,
+        fontSize: fontSize || 24,
+        lines: simpleFormatted.split('\n')
+      };
+    }
+
+    // 使用新的智能优化算法
+    try {
+      console.log(`Starting text layout optimization for: "${text.substring(0, 20)}..."`);
+      const result = this.textLayoutOptimizer.optimizeLayout(text, containerWidth, fontSize);
+      console.log(`Optimization completed. Font size: ${result.fontSize}, Lines: ${result.lines.length}`);
+      return result;
+    } catch (error) {
+      console.error('Advanced text optimization failed, fallback to simple formatting:', error);
+
+      // 出错时降级到简单处理
+      const simpleFormatted = text
+        .replace(/([，,])\s*/g, '$1\n')
+        .replace(/([。！？；：])\s*/g, '$1\n \n')
+        .replace(/([.!?;:])\s*/g, '$1\n \n')
+        .replace(/\n{3,}/g, '\n \n')
+        .replace(/\s*\n\s*/g, '\n')
+        .trim();
+
+      return {
+        text: simpleFormatted,
+        fontSize: fontSize,
+        lines: simpleFormatted.split('\n')
+      };
+    }
   }
 
   async saveImageToPhoto(buffer: ArrayBuffer): Promise<void> {
@@ -602,8 +1518,8 @@ struct Index {
       Swiper() {
         LazyForEach(this.quoteDataSource, (quote: Quote, index: number) => {
           Column() {
-            Text(this.formatQuoteText(quote.text))
-              .fontSize((this.wallpaperList[index]?.style.fontSize) || 24)
+            Text(this.formatQuoteText(quote.text).text)
+              .fontSize(this.optimizedFontSizes[index] || (this.wallpaperList[index]?.style.fontSize) || 24)
               .fontColor((this.wallpaperList[index]?.style.textColor) || '#d3d3d3')
               .textAlign(TextAlign.Center)
               .width('100%')
@@ -888,10 +1804,10 @@ struct Index {
     // 纯净的壁纸组件，只包含背景色和文字，用于截图保存
     // 注意：截图组件不使用动画，始终显示完整内容
     Column() {
-      if (this.quoteDataSource.totalCount() > this.currentPageIndex) {
+      if (this.getCurrentQuote()) {
         // 显示当前页面的内容
-        Text(this.formatQuoteText(this.getCurrentQuote().text))
-          .fontSize((this.getCurrentWallpaper()?.style.fontSize) || 24)
+        Text(this.formatQuoteText(this.getCurrentQuote()?.text || '').text)
+          .fontSize(this.optimizedFontSizes[this.currentPageIndex] || (this.getCurrentWallpaper()?.style.fontSize) || 24)
           .fontColor((this.getCurrentWallpaper()?.style.textColor) || '#d3d3d3')
           .textAlign(TextAlign.Center)
           .width('100%')
@@ -899,26 +1815,9 @@ struct Index {
           .maxLines(20)
           .textOverflow({ overflow: TextOverflow.None })
 
-        Text(`—— ${this.getCurrentQuote().author || ''}${(this.getCurrentQuote().author && this.getCurrentQuote().source) ? ' · ' : ''}${this.getCurrentQuote().source || ''}`)
+        Text(`—— ${this.getCurrentQuote()?.author || ''}${(this.getCurrentQuote()?.author && this.getCurrentQuote()?.source) ? ' · ' : ''}${this.getCurrentQuote()?.source || ''}`)
           .fontSize(12)
           .fontColor((this.getCurrentWallpaper()?.style.textColor) || '#d3d3d3')
-          .opacity(0.8)
-          .textAlign(TextAlign.Center)
-          .width('100%')
-      } else if (this.currentQuote) {
-        // 备用：显示默认内容
-        Text(this.formatQuoteText(this.currentQuote.text))
-          .fontSize((this.currentWallpaper?.style.fontSize) || 24)
-          .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
-          .textAlign(TextAlign.Center)
-          .width('100%')
-          .margin({ bottom: 40 })
-          .maxLines(20)
-          .textOverflow({ overflow: TextOverflow.None })
-
-        Text(`—— ${this.currentQuote.author || ''}${(this.currentQuote.author && this.currentQuote.source) ? ' · ' : ''}${this.currentQuote.source || ''}`)
-          .fontSize(12)
-          .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
           .opacity(0.8)
           .textAlign(TextAlign.Center)
           .width('100%')
