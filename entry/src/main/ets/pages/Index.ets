@@ -12,6 +12,49 @@ import common from '@ohos.app.ability.common';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
 // SaveButton is not available in HarmonyOS API, using regular Button instead
 
+// 数据源类实现，参考helper6_page_turn.txt第68-74行
+class QuoteDataSource implements IDataSource {
+  private quotes: Quote[] = [];
+  private listeners: DataChangeListener[] = [];
+
+  public totalCount(): number {
+    return this.quotes.length;
+  }
+
+  public getData(index: number): Quote {
+    return this.quotes[index];
+  }
+
+  public registerDataChangeListener(listener: DataChangeListener): void {
+    if (this.listeners.indexOf(listener) < 0) {
+      this.listeners.push(listener);
+    }
+  }
+
+  public unregisterDataChangeListener(listener: DataChangeListener): void {
+    const pos = this.listeners.indexOf(listener);
+    if (pos >= 0) {
+      this.listeners.splice(pos, 1);
+    }
+  }
+
+  public pushItem(quote: Quote): void {
+    this.quotes.push(quote);
+    this.notifyDataAdd(this.quotes.length - 1);
+  }
+
+  public addItem(quote: Quote): void {
+    this.quotes.unshift(quote);
+    this.notifyDataAdd(0);
+  }
+
+  private notifyDataAdd(index: number): void {
+    this.listeners.forEach(listener => {
+      listener.onDataAdd(index);
+    });
+  }
+}
+
 @Entry
 @Component
 struct Index {
@@ -38,13 +81,51 @@ struct Index {
   private hintTimer: number = -1; // 提示文字定时器
   private debounceTimer: number = -1; // 防抖定时器
 
+  // 上下翻页相关状态
+  @State currentPageIndex: number = 0;
+  @State quoteDataSource: QuoteDataSource = new QuoteDataSource();
+  @State wallpaperList: (GeneratedWallpaper | null)[] = [];
+
   async aboutToAppear() {
     await this.getScreenRatio();
     await this.loadConfig();
     await this.loadQuoteSource();
-    await this.loadCurrentWallpaper();
+    await this.initializeQuoteList();
     await this.updatePreview();
+    await this.updateBackgroundForCurrentPage(this.currentPageIndex); // 初始化背景
     this.startHintTimer();
+  }
+
+  // 初始化名言列表，参考helper6_page_turn.txt第57-65行
+  async initializeQuoteList() {
+    try {
+      // 先加载当前名言
+      this.quoteDataSource.pushItem(this.currentQuote);
+      this.wallpaperList.push(await WallpaperService.getCurrentWallpaper());
+
+      // 加载推荐名言
+      if (this.config) {
+        for (let i = 0; i < 10; i++) { // 预加载10条名言
+          try {
+            const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1);
+            if (recommendedQuotes && recommendedQuotes.length > 0) {
+              const quote = recommendedQuotes[0];
+              this.quoteDataSource.pushItem(quote);
+              const wallpaper = await WallpaperService.generateWallpaper(quote);
+              this.wallpaperList.push(wallpaper);
+            }
+          } catch (error) {
+            console.error('Failed to load recommended quote:', error);
+            // 加载默认名言作为备选
+            const fallbackQuote = QuoteData.getRandomQuote();
+            this.quoteDataSource.pushItem(fallbackQuote);
+            this.wallpaperList.push(null);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to initialize quote list:', error);
+    }
   }
 
   async loadQuoteSource() {
@@ -151,6 +232,21 @@ struct Index {
     }
   }
 
+  // 获取当前页面的名言和壁纸
+  getCurrentQuote(): Quote {
+    if (this.quoteDataSource.totalCount() > this.currentPageIndex) {
+      return this.quoteDataSource.getData(this.currentPageIndex);
+    }
+    return this.currentQuote;
+  }
+
+  getCurrentWallpaper(): GeneratedWallpaper | null {
+    if (this.wallpaperList.length > this.currentPageIndex) {
+      return this.wallpaperList[this.currentPageIndex];
+    }
+    return this.currentWallpaper;
+  }
+
 
   async updatePreview() {
     try {
@@ -158,20 +254,14 @@ struct Index {
       this.isTransitioning = true;
 
       let newBackground = '#2c3e50';
+      const currentWallpaper = this.getCurrentWallpaper();
 
-      if (this.previewMode === 'recommended' && this.recommendedWallpaper) {
-        const previewResult = WallpaperService.createWallpaperPreview(this.recommendedWallpaper);
+      if (currentWallpaper) {
+        const previewResult = WallpaperService.createWallpaperPreview(currentWallpaper);
         if (previewResult) {
           newBackground = previewResult;
         } else {
-          newBackground = this.recommendedWallpaper.style.backgroundColor || '#2c3e50';
-        }
-      } else if (this.currentWallpaper) {
-        const previewResult = WallpaperService.createWallpaperPreview(this.currentWallpaper);
-        if (previewResult) {
-          newBackground = previewResult;
-        } else {
-          newBackground = this.currentWallpaper.style.backgroundColor || '#2c3e50';
+          newBackground = currentWallpaper.style.backgroundColor || '#2c3e50';
         }
       }
 
@@ -220,100 +310,64 @@ struct Index {
     }
   }
 
-  async viewCurrent() {
-    this.previewMode = 'current';
-    await this.updatePreview();
+  // 页面滚动时的回调，参考helper6_page_turn.txt第101-103行
+  onScrollIndex(firstIndex: number) {
+    this.currentPageIndex = firstIndex;
+    console.log('Current page index:', this.currentPageIndex);
+    // 异步加载更多内容
+    this.loadMoreIfNeeded(firstIndex);
   }
 
-  async recommendNext() {
-    // 如果正在过渡中，直接返回
-    if (this.isTransitioning) {
-      return;
+  // 按需加载更多内容
+  async loadMoreIfNeeded(currentIndex: number) {
+    const totalCount = this.quoteDataSource.totalCount();
+
+    // 当滚动到倒数第3项时，预加载更多内容
+    if (currentIndex >= totalCount - 3) {
+      try {
+        for (let i = 0; i < 5; i++) { // 预加载5条
+          const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1);
+          if (recommendedQuotes && recommendedQuotes.length > 0) {
+            const quote = recommendedQuotes[0];
+            this.quoteDataSource.pushItem(quote);
+            const wallpaper = await WallpaperService.generateWallpaper(quote);
+            this.wallpaperList.push(wallpaper);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load more quotes:', error);
+      }
     }
+  }
 
+  // 更新当前页面的背景颜色
+  async updateBackgroundForCurrentPage(index: number) {
     try {
-      this.isLoading = true;
-      this.recommendedQuote = null;
-      this.recommendedWallpaper = null;
-      this.previewMode = 'current';
-      await this.updatePreview();
+      let newBackground = '#2c3e50';
 
-      console.log('Starting recommendation process...');
-
-      const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(20);
-      console.log('Got recommended quotes:', recommendedQuotes.length);
-
-      if (!recommendedQuotes || recommendedQuotes.length === 0) {
-        throw new Error('No recommended quotes available');
+      if (this.wallpaperList.length > index && this.wallpaperList[index] !== null) {
+        const wallpaper = this.wallpaperList[index];
+        if (wallpaper) {
+          const previewResult = WallpaperService.createWallpaperPreview(wallpaper);
+          if (previewResult) {
+            newBackground = previewResult;
+          } else {
+            newBackground = wallpaper.style.backgroundColor || '#2c3e50';
+          }
+        }
       }
 
-      const unusedQuotes = recommendedQuotes.filter(quote => {
-        const quoteKey = `${quote.text}-${quote.author}`;
-        return !this.usedRecommendations.has(quoteKey);
+      // 使用动画更新背景
+      animateTo({
+        duration: 300,
+        curve: Curve.EaseInOut
+      }, () => {
+        this.previewBackground = newBackground;
       });
 
-      let selectedQuote: Quote;
-
-      if (unusedQuotes.length > 0) {
-        const randomIndex = Math.floor(Math.random() * unusedQuotes.length);
-        selectedQuote = unusedQuotes[randomIndex];
-      } else {
-        this.usedRecommendations.clear();
-        const randomIndex = Math.floor(Math.random() * recommendedQuotes.length);
-        selectedQuote = recommendedQuotes[randomIndex];
-      }
-
-      if (!selectedQuote) {
-        throw new Error('Failed to select a quote');
-      }
-
-      console.log('Selected quote:', selectedQuote.text);
-
-      const quoteKey = `${selectedQuote.text}-${selectedQuote.author}`;
-      this.usedRecommendations.add(quoteKey);
-      this.recommendedQuote = selectedQuote;
-
-      let generatedWallpaper: GeneratedWallpaper;
-      try {
-        generatedWallpaper = await WallpaperService.generateWallpaper(this.recommendedQuote);
-        console.log('Generated wallpaper:', generatedWallpaper);
-      } catch (wallpaperError) {
-        console.error('Failed to generate wallpaper, creating fallback:', wallpaperError);
-        const fallbackStyle: WallpaperStyle = {
-          backgroundColor: '#2c3e50',
-          textColor: '#d3d3d3',
-          fontSize: 32,
-          fontFamily: 'HarmonyOS Sans',
-          textAlign: 'center',
-          backgroundOpacity: 1.0
-        };
-        generatedWallpaper = {
-          quote: this.recommendedQuote,
-          style: fallbackStyle,
-          createdAt: new Date()
-        };
-      }
-
-      this.recommendedWallpaper = generatedWallpaper;
-
-      if (!this.recommendedQuote || !this.recommendedWallpaper) {
-        throw new Error('Recommendation data is incomplete');
-      }
-
-      this.previewMode = 'recommended';
-      console.log('Switching to recommended mode');
-      await this.updatePreview();
-      console.log('Recommendation completed successfully');
-
+      console.log('Background updated for page:', index, newBackground);
     } catch (error) {
-      console.error('Failed to load recommendation:', error);
-      if (!this.currentQuote) {
-        this.currentQuote = QuoteData.getRandomQuote();
-      }
-      this.previewMode = 'current';
-      await this.updatePreview();
-    } finally {
-      this.isLoading = false;
+      console.error('Failed to update background for current page:', error);
     }
   }
 
@@ -452,93 +506,60 @@ struct Index {
         .backgroundColor(this.previewBackground || '#667eea')
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
 
-      // 名言文本层
-      Column() {
-        if (this.isLoading) {
-          // 加载状态
+      // 上下翻页的名言文本层，使用Swiper实现分页效果，参考helper6_page_turn.txt第38-54行
+      Swiper() {
+        LazyForEach(this.quoteDataSource, (quote: Quote, index: number) => {
           Column() {
-            LoadingProgress()
-              .width(40)
-              .height(40)
-              .color('#d3d3d3')
-              .margin({ bottom: 12 })
-
-            Text('正在生成推荐...')
-              .fontSize(16)
-              .fontColor('#d3d3d3')
+            Text(this.formatQuoteText(quote.text))
+              .fontSize((this.wallpaperList[index]?.style.fontSize) || 24)
+              .fontColor((this.wallpaperList[index]?.style.textColor) || '#d3d3d3')
               .textAlign(TextAlign.Center)
+              .width('100%')
+              .margin({ bottom: 40 })
+              .maxLines(20)
+              .textOverflow({ overflow: TextOverflow.None })
+
+            Text(`—— ${quote.author || ''}${(quote.author && quote.source) ? ' · ' : ''}${quote.source || ''}`)
+              .fontSize(12)
+              .fontColor((this.wallpaperList[index]?.style.textColor) || '#d3d3d3')
+              .opacity(0.8)
+              .textAlign(TextAlign.Center)
+              .width('100%')
           }
           .justifyContent(FlexAlign.Center)
           .alignItems(HorizontalAlign.Center)
-        } else if (this.previewMode === 'recommended' && this.recommendedQuote) {
-          // 推荐模式显示推荐内容
-          Text(this.formatQuoteText(this.recommendedQuote.text))
-            .fontSize((this.recommendedWallpaper?.style.fontSize) || 24)
-            .fontColor((this.recommendedWallpaper?.style.textColor) || '#d3d3d3')
-            .textAlign(TextAlign.Center)
-            .width('100%')
-            .margin({ bottom: 40 })
-            .maxLines(20)
-            .textOverflow({ overflow: TextOverflow.None })
-            .opacity(this.contentOpacity)
-
-          Text(`—— ${this.recommendedQuote.author || ''}${(this.recommendedQuote.author && this.recommendedQuote.source) ? ' · ' : ''}${this.recommendedQuote.source || ''}`)
-            .fontSize(12)
-            .fontColor((this.recommendedWallpaper?.style.textColor) || '#d3d3d3')
-            .opacity(0.8 * this.contentOpacity)
-            .textAlign(TextAlign.Center)
-            .width('100%')
-        } else if (this.currentQuote) {
-          // 当前模式或推荐内容不存在时显示当前内容
-          Text(this.formatQuoteText(this.currentQuote.text))
-            .fontSize((this.currentWallpaper?.style.fontSize) || 24)
-            .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
-            .textAlign(TextAlign.Center)
-            .width('100%')
-            .margin({ bottom: 40 })
-            .maxLines(20)
-            .textOverflow({ overflow: TextOverflow.None })
-            .opacity(this.contentOpacity)
-
-          Text(`—— ${this.currentQuote.author || ''}${(this.currentQuote.author && this.currentQuote.source) ? ' · ' : ''}${this.currentQuote.source || ''}`)
-            .fontSize(12)
-            .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
-            .opacity(0.8 * this.contentOpacity)
-            .textAlign(TextAlign.Center)
-            .width('100%')
-        } else {
-          // 最后的保护：显示占位文本
-          Text('正在加载壁纸...')
-            .fontSize(16)
-            .fontColor('#d3d3d3')
-            .textAlign(TextAlign.Center)
-            .opacity(this.contentOpacity)
-        }
+          .padding(24)
+          .width('100%')
+          .height('100%')
+        }, (quote: Quote, index: number) => `${quote.text}-${index}`)
       }
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .padding(24)
+      .index(this.currentPageIndex)
       .width('100%')
       .height('100%')
-      .opacity(this.contentOpacity)
+      .indicator(false) // 隐藏指示器
+      .vertical(true) // 设置为垂直方向滑动
+      .cachedCount(3) // 参考helper6_page_turn.txt第53行，设置缓存数量
+      .onChange((index: number) => {
+        this.onScrollIndex(index);
+        this.updateBackgroundForCurrentPage(index);
+        this.resetHintTimer(); // 滑动切换时重置提示文字定时器
+      })
+      .onGestureSwipe((index: number, extraInfo: SwiperAnimationEvent) => {
+        this.resetHintTimer(); // 滑动手势开始时立即重置提示文字定时器
+      })
 
       // 顶部标题栏 - 半透明层
       Row() {
-        Text('锁屏助手')
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#ffffff')
-
         Blank()
 
         Button() {
-          Text('⚙')
+          Text('...')
             .fontSize(18)
             .fontColor('#ffffff')
         }
         .width(40)
         .height(40)
-        .backgroundColor('rgba(255, 255, 255, 0.2)')
+        .backgroundColor('rgba(255, 255, 255, 0)')
         .borderRadius(20)
         .backdropBlur(10)
         .onClick(() => {
@@ -556,7 +577,7 @@ struct Index {
 
       // 底部提示文字 - 半透明层
       Column() {
-        Text('短按切换 · 长按保存')
+        Text('上下滑动切换 · 长按保存')
           .fontSize(14)
           .fontColor('#ffffff')
           .opacity(this.hintOpacity)
@@ -611,28 +632,12 @@ struct Index {
     .height('100%')
     .id('previewArea')
     .gesture(
-      GestureGroup(GestureMode.Exclusive,
-        // 长按手势：保存壁纸
-        LongPressGesture({ fingers: 1, repeat: false, duration: 800 })
-          .onAction(() => {
-            // 在过渡期间禁用手势响应
-            if (this.isTransitioning) {
-              return;
-            }
-            this.resetHintTimer();
-            this.showSaveDialog = true;
-          }),
-        // 短按手势：切换壁纸
-        TapGesture({ count: 1, fingers: 1 })
-          .onAction(async () => {
-            // 在加载或过渡期间禁用手势响应
-            if (this.isLoading || this.isTransitioning) {
-              return;
-            }
-            this.resetHintTimer();
-            await this.recommendNext();
-          })
-      )
+      // 长按手势：保存壁纸
+      LongPressGesture({ fingers: 1, repeat: false, duration: 800 })
+        .onAction(() => {
+          this.resetHintTimer(); // 长按时重置提示文字定时器
+          this.showSaveDialog = true;
+        })
     )
     .bindContentCover(this.showSaveDialog, this.buildSaveDialog(), ModalTransition.NONE)
   }
@@ -778,25 +783,25 @@ struct Index {
     // 纯净的壁纸组件，只包含背景色和文字，用于截图保存
     // 注意：截图组件不使用动画，始终显示完整内容
     Column() {
-      if (this.previewMode === 'recommended' && this.recommendedQuote) {
-        // 推荐模式显示推荐内容
-        Text(this.formatQuoteText(this.recommendedQuote.text))
-          .fontSize((this.recommendedWallpaper?.style.fontSize) || 24)
-          .fontColor((this.recommendedWallpaper?.style.textColor) || '#d3d3d3')
+      if (this.quoteDataSource.totalCount() > this.currentPageIndex) {
+        // 显示当前页面的内容
+        Text(this.formatQuoteText(this.getCurrentQuote().text))
+          .fontSize((this.getCurrentWallpaper()?.style.fontSize) || 24)
+          .fontColor((this.getCurrentWallpaper()?.style.textColor) || '#d3d3d3')
           .textAlign(TextAlign.Center)
           .width('100%')
           .margin({ bottom: 40 })
           .maxLines(20)
           .textOverflow({ overflow: TextOverflow.None })
 
-        Text(`—— ${this.recommendedQuote.author || ''}${(this.recommendedQuote.author && this.recommendedQuote.source) ? ' · ' : ''}${this.recommendedQuote.source || ''}`)
+        Text(`—— ${this.getCurrentQuote().author || ''}${(this.getCurrentQuote().author && this.getCurrentQuote().source) ? ' · ' : ''}${this.getCurrentQuote().source || ''}`)
           .fontSize(12)
-          .fontColor((this.recommendedWallpaper?.style.textColor) || '#d3d3d3')
+          .fontColor((this.getCurrentWallpaper()?.style.textColor) || '#d3d3d3')
           .opacity(0.8)
           .textAlign(TextAlign.Center)
           .width('100%')
       } else if (this.currentQuote) {
-        // 当前模式或推荐内容不存在时显示当前内容
+        // 备用：显示默认内容
         Text(this.formatQuoteText(this.currentQuote.text))
           .fontSize((this.currentWallpaper?.style.fontSize) || 24)
           .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
