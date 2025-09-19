@@ -6,7 +6,7 @@ import { QuoteDataSource } from '../common/QuoteDataSource';
 import { AppInitializationService } from '../services/AppInitializationService';
 import { QuotePageService } from '../services/QuotePageService';
 import { WallpaperUIService } from '../services/WallpaperUIService';
-import { UIAnimationService } from '../services/UIAnimationService';
+import { HintAnimationService } from '../services/HintAnimationService';
 import { TextLayoutResult } from '../common/TextLayoutTypes';
 import { UI_CONSTANTS } from '../common/UIConstants';
 import { TopBarComponent } from '../components/TopBarComponent';
@@ -46,16 +46,16 @@ struct Index {
   private appInitService: AppInitializationService | null = null;
   private quotePageService: QuotePageService | null = null;
   private wallpaperUIService: WallpaperUIService | null = null;
-  private uiAnimationService: UIAnimationService | null = null;
+  private hintAnimationService: HintAnimationService | null = null;
 
   async aboutToAppear() {
     console.log('CLAUDE_DEBUG: Index.aboutToAppear 开始');
     this.appInitService = new AppInitializationService();
     this.wallpaperUIService = new WallpaperUIService();
 
-    this.uiAnimationService = new UIAnimationService((opacity: number) => {
+    this.hintAnimationService = new HintAnimationService((opacity: number, duration: number) => {
       animateTo({
-        duration: opacity > this.hintOpacity ? UI_CONSTANTS.ANIMATION_DURATION_LONG : UI_CONSTANTS.ANIMATION_DURATION_MEDIUM,
+        duration: duration,
         curve: Curve.EaseInOut
       }, () => {
         this.hintOpacity = opacity;
@@ -95,7 +95,7 @@ struct Index {
 
     await this.updatePreview();
     await this.updateBackgroundForCurrentPage(this.currentPageIndex);
-    this.uiAnimationService?.startHintTimer();
+    this.hintAnimationService?.startHintTimer();
   }
 
 
@@ -272,7 +272,7 @@ struct Index {
         formatQuoteText: this.formatQuoteText.bind(this),
         onScrollIndex: this.onScrollIndex.bind(this),
         updateBackgroundForCurrentPage: this.updateBackgroundForCurrentPage.bind(this),
-        resetHintTimer: () => this.uiAnimationService?.resetHintTimer()
+        resetHintTimer: () => this.hintAnimationService?.resetHintTimer()
       })
 
       TopBarComponent()
@@ -290,7 +290,7 @@ struct Index {
         duration: UI_CONSTANTS.LONG_PRESS_DURATION
       })
         .onAction(() => {
-          this.uiAnimationService?.resetHintTimer();
+          this.hintAnimationService?.resetHintTimer();
           this.showSaveDialog = true;
         })
     )
