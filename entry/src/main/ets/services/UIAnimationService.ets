@@ -4,12 +4,14 @@ export class UIAnimationService {
   private debounceTimer: number = -1; // 防抖定时器
   private blinkTimer: number = -1; // 闪烁动画定时器
   private isBlinking: boolean = false; // 是否正在闪烁
+  private breathingSpeed: number = 0.5; // 呼吸速度倍数，1.0为正常速度，值越大越快
 
   // 回调函数类型定义
   private onHintOpacityChange?: (opacity: number) => void;
 
-  constructor(onHintOpacityChange?: (opacity: number) => void) {
+  constructor(onHintOpacityChange?: (opacity: number) => void, breathingSpeed: number = 1.0) {
     this.onHintOpacityChange = onHintOpacityChange;
+    this.breathingSpeed = breathingSpeed;
   }
 
   // 启动提示文字定时器
@@ -17,7 +19,7 @@ export class UIAnimationService {
     this.clearHintTimer();
     this.hintTimer = setTimeout(() => {
       this.showHint();
-    }, 4000);
+    }, 5000 / this.breathingSpeed);
   }
 
   // 清除提示文字定时器
@@ -69,18 +71,18 @@ export class UIAnimationService {
 
       // 第二阶段：缓慢"呼气"3秒
       if (this.onHintOpacityChange) {
-        this.onHintOpacityChange(0.1);
+        this.onHintOpacityChange(0);
       }
 
       // 呼气动画完成后，开始底部停顿
       setTimeout(() => {
         if (!this.isBlinking) return;
 
-        // 第三阶段：底部停顿5秒
+        // 第三阶段：底部停顿0.5秒
         setTimeout(() => {
           if (!this.isBlinking) return;
 
-          // 第四阶段：缓慢"吸气"2.5秒，从0.1恢复到0.8
+          // 第四阶段：缓慢"吸气"2.5秒，从0恢复到0.8
           if (this.onHintOpacityChange) {
             this.onHintOpacityChange(0.8);
           }
@@ -90,10 +92,10 @@ export class UIAnimationService {
             if (this.isBlinking) {
               this.blinkCycle();
             }
-          }, 2500);
-        }, 500); // 底部停顿0.5秒
-      }, 3000); // 呼气3秒
-    }, 2000); // 初始静止2秒
+          }, 2500 / this.breathingSpeed);
+        }, 500 / this.breathingSpeed); // 底部停顿0.5秒
+      }, 3000 / this.breathingSpeed); // 呼气3秒
+    }, 2000 / this.breathingSpeed); // 初始静止2秒
   }
 
   // 停止闪烁效果
@@ -151,5 +153,15 @@ export class UIAnimationService {
   // 检查是否在闪烁状态
   isBlinkingActive(): boolean {
     return this.isBlinking;
+  }
+
+  // 设置呼吸速度
+  setBreathingSpeed(speed: number): void {
+    this.breathingSpeed = speed;
+  }
+
+  // 获取当前呼吸速度
+  getBreathingSpeed(): number {
+    return this.breathingSpeed;
   }
 }
