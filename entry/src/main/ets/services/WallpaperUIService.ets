@@ -5,7 +5,7 @@ import fs from '@ohos.file.fs';
 import image from '@ohos.multimedia.image';
 import common from '@ohos.app.ability.common';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
-import { OperationResult } from '../common/ServiceTypes';
+import { OperationResult, WallpaperApplyParams } from '../common/ServiceTypes';
 
 export class WallpaperUIService {
 
@@ -57,12 +57,8 @@ export class WallpaperUIService {
   }
 
   // 应用壁纸选项（核心业务逻辑，不包含UI状态管理）
-  async applyWallpaperOptions(
-    setLockScreen: boolean,
-    saveToGallery: boolean,
-    context: common.UIAbilityContext
-  ): Promise<OperationResult> {
-    if (!setLockScreen && !saveToGallery) {
+  async applyWallpaperOptions(params: WallpaperApplyParams): Promise<OperationResult> {
+    if (!params.setLockScreen && !params.saveToGallery) {
       const result: OperationResult = { success: false, message: '未选择任何操作' };
       return result;
     }
@@ -91,7 +87,7 @@ export class WallpaperUIService {
             const arrayBuffer: ArrayBuffer = await imagePacker.packing(pixelMap, packOpts);
 
             // 创建临时文件
-            const filesDir: string = context.filesDir;
+            const filesDir: string = params.context.filesDir;
             const tempImagePath = `${filesDir}/temp_wallpaper_${Date.now()}.jpg`;
 
             // 保存临时文件
@@ -102,22 +98,22 @@ export class WallpaperUIService {
             // 执行选定的操作
             const results = await WallpaperService.applyWallpaperOperations(
               tempImagePath,
-              setLockScreen,
-              saveToGallery
+              params.setLockScreen,
+              params.saveToGallery
             );
 
             // 生成结果消息
             let message = '';
-            if (setLockScreen && results.lockScreenSuccess) {
+            if (params.setLockScreen && results.lockScreenSuccess) {
               message += '锁屏壁纸设置成功！';
-            } else if (setLockScreen && !results.lockScreenSuccess) {
+            } else if (params.setLockScreen && !results.lockScreenSuccess) {
               message += '锁屏壁纸设置失败！';
             }
 
-            if (saveToGallery && results.gallerySuccess) {
+            if (params.saveToGallery && results.gallerySuccess) {
               if (message) message += '\n';
               message += '图片已保存到图库！';
-            } else if (saveToGallery && !results.gallerySuccess) {
+            } else if (params.saveToGallery && !results.gallerySuccess) {
               if (message) message += '\n';
               message += '图片保存到图库失败！';
             }
@@ -135,8 +131,8 @@ export class WallpaperUIService {
             imagePacker.release();
             pixelMap.release();
 
-            const success = (setLockScreen ? results.lockScreenSuccess : true) &&
-                           (saveToGallery ? results.gallerySuccess : true);
+            const success = (params.setLockScreen ? results.lockScreenSuccess : true) &&
+                           (params.saveToGallery ? results.gallerySuccess : true);
 
             const result: OperationResult = { success, message };
             resolve(result);

@@ -61,24 +61,35 @@ export class QuoteSelectionService {
 
   // 根据算法选择名言
   static async selectQuote(algorithm: SelectionAlgorithm): Promise<Quote> {
+    console.log('QuoteSelectionService.selectQuote 开始, algorithm:', algorithm);
+    let result: Quote;
     switch (algorithm) {
       case SelectionAlgorithm.RANDOM:
-        return QuoteSelectionService.selectRandomQuote();
-      
+        result = QuoteSelectionService.selectRandomQuote();
+        break;
+
       case SelectionAlgorithm.SEQUENTIAL:
-        return QuoteSelectionService.selectSequentialQuote();
-      
+        result = QuoteSelectionService.selectSequentialQuote();
+        break;
+
       case SelectionAlgorithm.SMART:
-        return await QuoteSelectionService.selectSmartQuote();
-      
+        result = await QuoteSelectionService.selectSmartQuote();
+        break;
+
       default:
-        return QuoteSelectionService.selectRandomQuote();
+        result = QuoteSelectionService.selectRandomQuote();
+        break;
     }
+    console.log('QuoteSelectionService.selectQuote 完成, quote:', result?.text || 'null');
+    return result;
   }
 
   // 随机选择
   private static selectRandomQuote(): Quote {
-    return QuoteData.getRandomQuote();
+    console.log('QuoteSelectionService.selectRandomQuote 开始');
+    const quote = QuoteData.getRandomQuote();
+    console.log('QuoteSelectionService.selectRandomQuote 完成, quote:', quote?.text || 'null');
+    return quote;
   }
 
   // 顺序选择

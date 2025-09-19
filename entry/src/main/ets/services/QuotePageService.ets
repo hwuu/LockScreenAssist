@@ -6,7 +6,7 @@ import { TextLayoutService } from './TextLayoutService';
 import { TextUtils } from '../common/TextUtils';
 import { TextLayoutResult } from '../common/TextLayoutTypes';
 import { QuoteDataSource } from '../common/QuoteDataSource';
-import { QuoteListInitResult } from '../common/ServiceTypes';
+import { QuoteListInitResult, QuoteListInitParams, LoadMoreParams, ProcessQuoteParams } from '../common/ServiceTypes';
 
 export class QuotePageService {
   private textLayoutService: TextLayoutService | null = null;
@@ -20,36 +20,27 @@ export class QuotePageService {
     this.textLayoutService = new TextLayoutService(screenWidth, screenHeight);
   }
 
-  // 计算基于字体大小的动态容器宽度
   calculateDynamicContainerWidth(fontSize: number): number {
-    const parentPadding = 48; // 左右各24px
-    const safetyMargin = fontSize * 5; // 字体大小 * 5
+    const parentPadding = 48;
+    const safetyMargin = fontSize * 5;
     const rawContainerWidth = this.screenWidth - parentPadding - safetyMargin;
-    return Math.max(rawContainerWidth, 200); // 最小宽度200px
+    return Math.max(rawContainerWidth, 200);
   }
 
-  // 处理单个quote的通用方法（添加到数据源、生成壁纸、优化字体）
-  async processQuote(quote: Quote, quoteDataSource: QuoteDataSource, wallpaperList: (GeneratedWallpaper | null)[], optimizedFontSizes: number[]): Promise<void> {
-    // 添加到数据源和已使用列表
-    quoteDataSource.pushItem(quote);
+  async processQuote(quote: Quote, params: ProcessQuoteParams): Promise<void> {
+    params.quoteDataSource.pushItem(quote);
     this.usedQuoteTexts.add(quote.text);
 
-    // 生成壁纸
     const wallpaper = await WallpaperService.generateWallpaper(quote);
-    wallpaperList.push(wallpaper);
-
-    // 预处理字体大小
+    params.wallpaperList.push(wallpaper);
     const quoteFontSize = wallpaper?.style.fontSize || 24;
     const quoteContainerWidth = this.calculateDynamicContainerWidth(quoteFontSize);
     const quoteLayout = this.formatQuoteText(quote.text, quoteFontSize, quoteContainerWidth);
-    optimizedFontSizes.push(quoteLayout.fontSize);
+    params.optimizedFontSizes.push(quoteLayout.fontSize);
   }
 
-  // 智能格式化名言文本，避免孤行和标点符号行首
   formatQuoteText(text: string, fontSize?: number, containerWidth?: number): TextLayoutResult {
-    // 如果没有提供参数或服务未初始化，使用简单处理
     if (!fontSize || !containerWidth || !this.textLayoutService) {
-      // 降级到原有的简单换行逻辑
       const simpleFormatted = TextUtils.applySimpleTextFormatting(text);
 
       return {
@@ -59,7 +50,6 @@ export class QuotePageService {
       };
     }
 
-    // 使用TextLayoutService的智能优化算法
     try {
       console.log(`Starting text layout optimization for: "${text.substring(0, 20)}..."`);
       const result = this.textLayoutService.optimizeLayout(text, containerWidth, fontSize);
@@ -67,8 +57,6 @@ export class QuotePageService {
       return result;
     } catch (error) {
       console.error('Advanced text optimization failed, fallback to simple formatting:', error);
-
-      // 出错时降级到简单处理
       const simpleFormatted = TextUtils.applySimpleTextFormatting(text);
 
       return {
@@ -79,14 +67,7 @@ export class QuotePageService {
     }
   }
 
-  // 初始化名言列表，参考helper6_page_turn.txt第57-65行
-  async initializeQuoteList(
-    currentQuote: Quote | null,
-    currentWallpaper: GeneratedWallpaper | null,
-    quoteDataSource: QuoteDataSource,
-    wallpaperList: (GeneratedWallpaper | null)[],
-    optimizedFontSizes: number[]
-  ): Promise<QuoteListInitResult> {
+  async initializeQuoteList(params: QuoteListInitParams): Promise<QuoteListInitResult> {
     try {
       console.log(`=== 初始化名言列表 ===`);
       console.log(`屏幕宽度: ${this.screenWidth}px, 屏幕高度: ${this.screenHeight}px`);
@@ -101,11 +82,11 @@ export class QuotePageService {
       console.log(`父容器padding: ${parentPadding}px`);
 
       // 如果没有当前名言，使用推荐系统获取第一个
-      if (!currentQuote) {
+      if (!params.currentQuote) {
         const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1, this.usedQuoteTexts);
         if (recommendedQuotes && recommendedQuotes.length > 0) {
-          currentQuote = recommendedQuotes[0];
-          this.usedQuoteTexts.add(currentQuote.text); // 添加到已使用列表
+          params.currentQuote = recommendedQuotes[0];
+          this.usedQuoteTexts.add(params.currentQuote.text); // 添加到已使用列表
         } else {
           // 如果推荐系统也失败，使用默认名言
           const defaultQuote: Quote = {
@@ -114,21 +95,21 @@ export class QuotePageService {
             category: "群众",
             source: "《关心群众生活，注意工作方法》"
           };
-          currentQuote = defaultQuote;
+          params.currentQuote = defaultQuote;
         }
       }
 
       // 先加载当前名言
-      quoteDataSource.pushItem(currentQuote);
+      params.quoteDataSource.pushItem(params.currentQuote);
 
       // 如果没有当前壁纸，生成一个
-      if (!currentWallpaper) {
-        currentWallpaper = await WallpaperService.generateWallpaper(currentQuote);
+      if (!params.currentWallpaper) {
+        params.currentWallpaper = await WallpaperService.generateWallpaper(params.currentQuote);
       }
-      wallpaperList.push(currentWallpaper);
+      params.wallpaperList.push(params.currentWallpaper);
 
       // 预处理当前名言的字体大小
-      const initialFontSize = currentWallpaper?.style.fontSize || 24;
+      const initialFontSize = params.currentWallpaper?.style.fontSize || 24;
       console.log(`使用初始字体大小: ${initialFontSize}px`);
 
       // 重新计算基于字体大小的安全边距和容器宽度
@@ -137,8 +118,8 @@ export class QuotePageService {
       console.log(`动态安全边距: ${initialFontSize * 5}px (基于字体${initialFontSize}px)`);
       console.log(`动态容器宽度: ${dynamicContainerWidth}px`);
 
-      const textLayout = this.formatQuoteText(currentQuote.text, initialFontSize, dynamicContainerWidth);
-      optimizedFontSizes.push(textLayout.fontSize);
+      const textLayout = this.formatQuoteText(params.currentQuote.text, initialFontSize, dynamicContainerWidth);
+      params.optimizedFontSizes.push(textLayout.fontSize);
 
       console.log(`=== 当前quote处理完成 ===`);
       console.log(`优化后字体大小: ${textLayout.fontSize}px`);
@@ -149,28 +130,28 @@ export class QuotePageService {
       const moreQuotes = await QuoteSelectionService.getRecommendedQuotes(10, this.usedQuoteTexts);
       if (moreQuotes && moreQuotes.length > 0) {
         for (const quote of moreQuotes) {
-          await this.processQuote(quote, quoteDataSource, wallpaperList, optimizedFontSizes);
+          const processParams: ProcessQuoteParams = {
+            quoteDataSource: params.quoteDataSource,
+            wallpaperList: params.wallpaperList,
+            optimizedFontSizes: params.optimizedFontSizes
+          };
+          await this.processQuote(quote, processParams);
         }
         console.log(`加载了${moreQuotes.length}条推荐名言`);
       }
 
-      const result: QuoteListInitResult = { quote: currentQuote, wallpaper: currentWallpaper };
+      const result: QuoteListInitResult = { quote: params.currentQuote, wallpaper: params.currentWallpaper };
       return result;
     } catch (error) {
       console.error('Failed to initialize quote list:', error);
-      const result: QuoteListInitResult = { quote: currentQuote, wallpaper: currentWallpaper };
+      const result: QuoteListInitResult = { quote: params.currentQuote, wallpaper: params.currentWallpaper };
       return result;
     }
   }
 
   // 按需加载更多内容
-  async loadMoreIfNeeded(
-    currentIndex: number,
-    quoteDataSource: QuoteDataSource,
-    wallpaperList: (GeneratedWallpaper | null)[],
-    optimizedFontSizes: number[]
-  ): Promise<void> {
-    const totalCount = quoteDataSource.totalCount();
+  async loadMoreIfNeeded(params: LoadMoreParams): Promise<void> {
+    const totalCount = params.quoteDataSource.totalCount();
 
     // 限制最多加载100条内容
     if (totalCount >= 100) {
@@ -179,22 +160,26 @@ export class QuotePageService {
     }
 
     // 当滚动到倒数第3项时，预加载更多内容
-    if (currentIndex >= totalCount - 3) {
+    if (params.currentIndex >= totalCount - 3) {
       try {
         // 计算还能加载多少条，避免超过100条限制
         const remainingCount = 100 - totalCount;
-        const loadCount = Math.min(10, remainingCount); // 预加载5条或剩余数量
-        const parentPadding = 48; // 左右各24px padding
+        const loadCount = Math.min(10, remainingCount); // 预加载10条或剩余数量
 
         for (let i = 0; i < loadCount; i++) {
           const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1, this.usedQuoteTexts);
           if (recommendedQuotes && recommendedQuotes.length > 0) {
             const quote = recommendedQuotes[0];
-            await this.processQuote(quote, quoteDataSource, wallpaperList, optimizedFontSizes);
+            const processParams2: ProcessQuoteParams = {
+              quoteDataSource: params.quoteDataSource,
+              wallpaperList: params.wallpaperList,
+              optimizedFontSizes: params.optimizedFontSizes
+            };
+            await this.processQuote(quote, processParams2);
           }
         }
 
-        console.log(`加载了${loadCount}条内容，当前总数：${quoteDataSource.totalCount()}`);
+        console.log(`加载了${loadCount}条内容，当前总数：${params.quoteDataSource.totalCount()}`);
       } catch (error) {
         console.error('Failed to load more quotes:', error);
       }

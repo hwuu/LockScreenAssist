@@ -7,10 +7,12 @@ export class QuoteDataSource implements IDataSource {
   private listeners: DataChangeListener[] = [];
 
   public totalCount(): number {
+    console.log('CLAUDE_DEBUG: QuoteDataSource.totalCount:', this.quotes.length);
     return this.quotes.length;
   }
 
   public getData(index: number): Quote {
+    console.log(`CLAUDE_DEBUG: QuoteDataSource.getData(${index}):`, this.quotes[index]?.text || 'null');
     return this.quotes[index];
   }
 
@@ -28,6 +30,7 @@ export class QuoteDataSource implements IDataSource {
   }
 
   public pushItem(quote: Quote): void {
+    console.log('CLAUDE_DEBUG: QuoteDataSource.pushItem:', quote?.text || 'null', '总数将变为:', this.quotes.length + 1);
     this.quotes.push(quote);
     this.notifyDataAdd(this.quotes.length - 1);
   }

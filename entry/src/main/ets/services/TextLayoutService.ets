@@ -10,6 +10,7 @@ import {
   IdealLineRange,
   OptimizationConfig
 } from '../common/TextLayoutTypes';
+import { UI_CONSTANTS, TEXT_LAYOUT_WEIGHTS, FONT_RANGE, IDEAL_LINE_RANGE, TEXT_OPTIMIZATION_CONFIG } from '../common/UIConstants';
 
 // 文本布局服务类
 export class TextLayoutService {
@@ -22,28 +23,27 @@ export class TextLayoutService {
     this.screenHeight = screenHeight;
 
     const weights: WeightsConfig = {
-      r1: 0.15,  // 自动换行比例
-      r2: 0.35,  // 孤行比例
-      r3: 0.05,  // 行宽不均匀度
-      r4: 0.05,  // 长宽比偏差
-      r5: 0.15,  // 空间利用率
-      r6: 0.1,   // 标点位置合规性
-      r7: 0.125, // 视觉密度均匀性
-      r9: 0.025  // 视觉焦点分散度
+      r1: TEXT_LAYOUT_WEIGHTS.AUTO_WRAP_RATIO,
+      r2: TEXT_LAYOUT_WEIGHTS.ORPHAN_LINE_RATIO,
+      r3: TEXT_LAYOUT_WEIGHTS.LINE_WIDTH_VARIANCE,
+      r4: TEXT_LAYOUT_WEIGHTS.ASPECT_RATIO_DEVIATION,
+      r5: TEXT_LAYOUT_WEIGHTS.SPACE_UTILIZATION,
+      r6: TEXT_LAYOUT_WEIGHTS.PUNCTUATION_COMPLIANCE,
+      r7: TEXT_LAYOUT_WEIGHTS.VISUAL_DENSITY_UNIFORMITY,
+      r9: TEXT_LAYOUT_WEIGHTS.VISUAL_FOCUS_DISPERSION
     };
 
-    const fontRange: FontRange = { min: 14, max: 40 };
-    const idealLineRange: IdealLineRange = { min: 5, max: 12 };
+    const fontRange: FontRange = { min: FONT_RANGE.MIN, max: FONT_RANGE.MAX };
+    const idealLineRange: IdealLineRange = { min: IDEAL_LINE_RANGE.MIN, max: IDEAL_LINE_RANGE.MAX };
 
     this.config = {
       weights: weights,
       fontRange: fontRange,
       idealLineRange: idealLineRange,
-      maxIterations: 50
+      maxIterations: TEXT_OPTIMIZATION_CONFIG.MAX_ITERATIONS
     };
   }
 
-  // 主要优化方法
   optimizeLayout(text: string, containerWidth: number, baseFontSize: number): TextLayoutResult {
     let bestScore = Infinity;
     let bestResult: TextLayoutResult | null = null;
@@ -62,7 +62,6 @@ export class TextLayoutService {
     return fineBest;
   }
 
-  // 搜索最佳字体大小
   private searchOptimalFontSize(text: string, containerWidth: number, minSize: number, maxSize: number, step: number): TextLayoutResult {
     let bestScore = Infinity;
     let bestResult: TextLayoutResult | null = null;
@@ -76,14 +75,14 @@ export class TextLayoutService {
       const metrics = this.measureText(text, fontSize, containerWidth);
       const score = this.calculateScore(metrics);
 
-      const r1 = this.calculateR1(metrics);
-      const r2 = this.calculateR2(metrics);
-      const r3 = this.calculateR3(metrics);
-      const r4 = this.calculateR4(metrics);
-      const r5 = this.calculateR5(metrics);
-      const r6 = this.calculateR6(metrics);
-      const r7 = this.calculateR7(metrics);
-      const r9 = this.calculateR9(metrics);
+      const r1 = this.calculateAutoWrapRatio(metrics);
+      const r2 = this.calculateOrphanLineRatio(metrics);
+      const r3 = this.calculateLineWidthVariance(metrics);
+      const r4 = this.calculateAspectRatioDeviation(metrics);
+      const r5 = this.calculateSpaceUtilization(metrics);
+      const r6 = this.calculatePunctuationViolationRatio(metrics);
+      const r7 = this.calculateVisualDensityUniformity(metrics);
+      const r9 = this.calculateVisualFocusDispersion(metrics);
 
       console.log(`--- 字体大小 ${fontSize}px ---`);
       console.log(`总行数: ${metrics.lines.length}`);
@@ -148,14 +147,14 @@ export class TextLayoutService {
 
   // 计算综合评分
   private calculateScore(metrics: TextLayoutMetrics): number {
-    const r1 = this.calculateR1(metrics);
-    const r2 = this.calculateR2(metrics);
-    const r3 = this.calculateR3(metrics);
-    const r4 = this.calculateR4(metrics);
-    const r5 = this.calculateR5(metrics);
-    const r6 = this.calculateR6(metrics);
-    const r7 = this.calculateR7(metrics);
-    const r9 = this.calculateR9(metrics);
+    const r1 = this.calculateAutoWrapRatio(metrics);
+    const r2 = this.calculateOrphanLineRatio(metrics);
+    const r3 = this.calculateLineWidthVariance(metrics);
+    const r4 = this.calculateAspectRatioDeviation(metrics);
+    const r5 = this.calculateSpaceUtilization(metrics);
+    const r6 = this.calculatePunctuationViolationRatio(metrics);
+    const r7 = this.calculateVisualDensityUniformity(metrics);
+    const r9 = this.calculateVisualFocusDispersion(metrics);
 
     return this.config.weights.r1 * r1 +
            this.config.weights.r2 * r2 +
@@ -375,25 +374,25 @@ export class TextLayoutService {
   }
 
   // r1: 自动换行比例 = (自动换行数 + 原始换行数) / 渲染后总行数
-  private calculateR1(metrics: TextLayoutMetrics): number {
+  private calculateAutoWrapRatio(metrics: TextLayoutMetrics): number {
     if (metrics.lines.length === 0) return 0;
     return (metrics.autoWrapCount + metrics.originalLineCount) / metrics.lines.length;
   }
 
   // r2: 孤行比例 = 孤行数量 / 渲染后总行数
-  private calculateR2(metrics: TextLayoutMetrics): number {
+  private calculateOrphanLineRatio(metrics: TextLayoutMetrics): number {
     if (metrics.lines.length === 0) return 0;
     return metrics.orphanCount / metrics.lines.length;
   }
 
   // r6: 标点符号位置合规性 = 行首标点数量 / 总行数
-  private calculateR6(metrics: TextLayoutMetrics): number {
+  private calculatePunctuationViolationRatio(metrics: TextLayoutMetrics): number {
     if (metrics.lines.length === 0) return 0;
     return metrics.punctuationViolations / metrics.lines.length;
   }
 
   // r7: 视觉密度均匀性 = 各行字符密度方差 / 平均字符密度
-  private calculateR7(metrics: TextLayoutMetrics): number {
+  private calculateVisualDensityUniformity(metrics: TextLayoutMetrics): number {
     if (metrics.lines.length <= 1) return 0;
 
     // 计算每行的字符密度（字符数/行宽度）
@@ -417,7 +416,7 @@ export class TextLayoutService {
   }
 
   // r3: 行宽不均匀度 = 1 - (最短行宽度 / 最宽行宽度)
-  private calculateR3(metrics: TextLayoutMetrics): number {
+  private calculateLineWidthVariance(metrics: TextLayoutMetrics): number {
     if (metrics.lines.length <= 1) return 0;
 
     let minWidth = Infinity;
@@ -435,7 +434,7 @@ export class TextLayoutService {
   }
 
   // r4: 长宽比偏差 = abs(渲染后文本区域长宽比 - 屏幕长宽比) / 屏幕长宽比
-  private calculateR4(metrics: TextLayoutMetrics): number {
+  private calculateAspectRatioDeviation(metrics: TextLayoutMetrics): number {
     if (metrics.totalWidth === 0 || metrics.totalHeight === 0 || this.screenWidth === 0 || this.screenHeight === 0) return 0;
 
     // 计算文本区域长宽比（高/宽）
@@ -449,7 +448,7 @@ export class TextLayoutService {
   }
 
   // r5: 空间利用率 = (屏幕面积 - 渲染后文本区域面积) / 屏幕面积
-  private calculateR5(metrics: TextLayoutMetrics): number {
+  private calculateSpaceUtilization(metrics: TextLayoutMetrics): number {
     if (this.screenWidth === 0 || this.screenHeight === 0) return 0;
 
     const screenArea = this.screenWidth * this.screenHeight;
@@ -459,7 +458,7 @@ export class TextLayoutService {
   }
 
   // r9: 视觉焦点分散度 = |理想行数 - 实际行数| / 理想行数
-  private calculateR9(metrics: TextLayoutMetrics): number {
+  private calculateVisualFocusDispersion(metrics: TextLayoutMetrics): number {
     const actualLines = metrics.lines.length;
     const idealLines = (this.config.idealLineRange.min + this.config.idealLineRange.max) / 2;
 

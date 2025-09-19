@@ -8,11 +8,12 @@ import { QuotePageService } from '../services/QuotePageService';
 import { WallpaperUIService } from '../services/WallpaperUIService';
 import { UIAnimationService } from '../services/UIAnimationService';
 import { TextLayoutResult } from '../common/TextLayoutTypes';
+import { UI_CONSTANTS } from '../common/UIConstants';
+import { TopBarComponent } from '../components/TopBarComponent';
+import { HintTextComponent } from '../components/HintTextComponent';
+import { LoadingOverlayComponent } from '../components/LoadingOverlayComponent';
+import { QuoteSwiperComponent } from '../components/QuoteSwiperComponent';
 import common from '@ohos.app.ability.common';
-// SaveButton is not available in HarmonyOS API, using regular Button instead
-
-
-
 @Entry
 @Component
 struct Index {
@@ -27,55 +28,47 @@ struct Index {
 
   @State config: WallpaperConfig | null = null;
   @State showSaveDialog: boolean = false;
-  @State screenRatio: number = 16/9; // 默认比例
+  @State screenRatio: number = UI_CONSTANTS.DEFAULT_SCREEN_RATIO;
   @State screenWidth: number = 0;
   @State screenHeight: number = 0;
-  @State setLockScreen: boolean = false; // 官方已不支持该功能
-  @State saveToGallery: boolean = true; // 默认选中保存到图库
-  @State isApplying: boolean = false; // 应用壁纸的状态
-  @State hintOpacity: number = 0; // 提示文字透明度
-  @State contentOpacity: number = 1; // 内容区域透明度
-  @State isTransitioning: boolean = false; // 是否在过渡动画中
+  @State setLockScreen: boolean = false;
+  @State saveToGallery: boolean = true;
+  @State isApplying: boolean = false;
+  @State hintOpacity: number = 0;
+  @State contentOpacity: number = 1;
+  @State isTransitioning: boolean = false;
 
-  // 上下翻页相关状态
   @State currentPageIndex: number = 0;
-  @State quoteDataSource: QuoteDataSource = new QuoteDataSource();
+  @Provide quoteDataSource: QuoteDataSource = new QuoteDataSource();
   @State wallpaperList: (GeneratedWallpaper | null)[] = [];
-  @State optimizedFontSizes: number[] = []; // 存储每页优化后的字体大小
+  @State optimizedFontSizes: number[] = [];
 
-  // 服务依赖注入
   private appInitService: AppInitializationService | null = null;
   private quotePageService: QuotePageService | null = null;
   private wallpaperUIService: WallpaperUIService | null = null;
   private uiAnimationService: UIAnimationService | null = null;
 
-
-
-
-
-
-
-
-
-
   async aboutToAppear() {
-    // 初始化服务
+    console.log('CLAUDE_DEBUG: Index.aboutToAppear 开始');
     this.appInitService = new AppInitializationService();
     this.wallpaperUIService = new WallpaperUIService();
 
-    // 初始化UI动画服务，传入回调函数
     this.uiAnimationService = new UIAnimationService((opacity: number) => {
-      // 使用动画更新透明度
       animateTo({
-        duration: opacity > this.hintOpacity ? 2000 : 1000,
+        duration: opacity > this.hintOpacity ? UI_CONSTANTS.ANIMATION_DURATION_LONG : UI_CONSTANTS.ANIMATION_DURATION_MEDIUM,
         curve: Curve.EaseInOut
       }, () => {
         this.hintOpacity = opacity;
       });
     });
-
-    // 应用初始化
-    const initResult = await this.appInitService.initializeApp();
+    const context = getContext(this) as common.UIAbilityContext;
+    console.log('CLAUDE_DEBUG: Index 获取到context, 开始初始化应用');
+    const initResult = await this.appInitService.initializeApp(context);
+    console.log('CLAUDE_DEBUG: Index 应用初始化完成, initResult:', {
+      hasQuote: !!initResult.currentQuote,
+      hasWallpaper: !!initResult.currentWallpaper,
+      screenInfo: initResult.screenInfo
+    });
 
     this.screenWidth = initResult.screenInfo.width;
     this.screenHeight = initResult.screenInfo.height;
@@ -84,26 +77,24 @@ struct Index {
     this.currentQuote = initResult.currentQuote;
     this.currentWallpaper = initResult.currentWallpaper;
 
-    // 初始化名言页面服务
-    this.quotePageService = new QuotePageService(this.screenWidth, this.screenHeight);
+    console.log('CLAUDE_DEBUG: Index 当前名言:', this.currentQuote?.text || 'null');
 
-    // 初始化名言列表
-    const quoteResult = await this.quotePageService.initializeQuoteList(
-      this.currentQuote,
-      this.currentWallpaper,
-      this.quoteDataSource,
-      this.wallpaperList,
-      this.optimizedFontSizes
-    );
+    this.quotePageService = new QuotePageService(this.screenWidth, this.screenHeight);
+    console.log('CLAUDE_DEBUG: Index 开始初始化QuoteList, currentQuote:', this.currentQuote?.text || 'null');
+    const quoteResult = await this.quotePageService.initializeQuoteList({
+      currentQuote: this.currentQuote,
+      currentWallpaper: this.currentWallpaper,
+      quoteDataSource: this.quoteDataSource,
+      wallpaperList: this.wallpaperList,
+      optimizedFontSizes: this.optimizedFontSizes
+    });
 
     this.currentQuote = quoteResult.quote;
     this.currentWallpaper = quoteResult.wallpaper;
+    console.log('CLAUDE_DEBUG: Index QuoteList初始化完成, 最终名言:', this.currentQuote?.text || 'null');
 
-    // 更新预览和背景
     await this.updatePreview();
     await this.updateBackgroundForCurrentPage(this.currentPageIndex);
-
-    // 启动提示定时器
     this.uiAnimationService?.startHintTimer();
   }
 
@@ -113,11 +104,15 @@ struct Index {
 
 
 
-  // 获取当前页面的名言和壁纸
   getCurrentQuote(): Quote | null {
-    if (this.quoteDataSource.totalCount() > this.currentPageIndex) {
-      return this.quoteDataSource.getData(this.currentPageIndex);
+    const totalCount = this.quoteDataSource.totalCount();
+    console.log(`CLAUDE_DEBUG: Index.getCurrentQuote pageIndex=${this.currentPageIndex}, totalCount=${totalCount}`);
+    if (totalCount > this.currentPageIndex) {
+      const quote = this.quoteDataSource.getData(this.currentPageIndex);
+      console.log('CLAUDE_DEBUG: Index.getCurrentQuote 从DataSource获取:', quote?.text || 'null');
+      return quote;
     }
+    console.log('CLAUDE_DEBUG: Index.getCurrentQuote 使用currentQuote:', this.currentQuote?.text || 'null');
     return this.currentQuote;
   }
 
@@ -131,36 +126,31 @@ struct Index {
 
   async updatePreview() {
     try {
-      // 设置过渡状态，禁用手势响应
       this.isTransitioning = true;
 
       const currentWallpaper = this.getCurrentWallpaper();
       const newBackground = await this.wallpaperUIService?.updatePreview(currentWallpaper) || '#2c3e50';
 
-      // 内容淡出 -> 更新背景和内容 -> 内容淡入
-      // 第一阶段：内容淡出
       animateTo({
-        duration: 250,
+        duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
         curve: Curve.EaseInOut
       }, () => {
         this.contentOpacity = 0;
       });
 
-      // 第二阶段：更新背景，然后内容淡入
       setTimeout(() => {
         animateTo({
-          duration: 250,
+          duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
           curve: Curve.EaseInOut
         }, () => {
           this.previewBackground = newBackground;
           this.contentOpacity = 1;
         });
 
-        // 动画完成后恢复手势响应
         setTimeout(() => {
           this.isTransitioning = false;
-        }, 250);
-      }, 250);
+        }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
+      }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
 
       setTimeout(() => {
         console.log('Preview updated:', this.previewBackground);
@@ -168,51 +158,49 @@ struct Index {
     } catch (error) {
       console.error('Failed to update preview:', error);
       animateTo({
-        duration: 500,
+        duration: UI_CONSTANTS.ANIMATION_DURATION_FADE,
         curve: Curve.EaseInOut
       }, () => {
-        this.previewBackground = '#2c3e50';
+        this.previewBackground = UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
         this.contentOpacity = 1;
       });
 
-      // 错误情况下也要恢复手势响应
       setTimeout(() => {
         this.isTransitioning = false;
-      }, 500);
+      }, UI_CONSTANTS.ANIMATION_DURATION_FADE);
     }
   }
 
-  // 页面滚动时的回调，参考helper6_page_turn.txt第101-103行
   onScrollIndex(firstIndex: number) {
+    console.log('CLAUDE_DEBUG: Index.onScrollIndex 从', this.currentPageIndex, '到', firstIndex);
     this.currentPageIndex = firstIndex;
-    console.log('Current page index:', this.currentPageIndex);
-    // 异步加载更多内容
+    console.log('CLAUDE_DEBUG: Index.onScrollIndex 更新后 currentPageIndex:', this.currentPageIndex);
     this.loadMoreIfNeeded(firstIndex);
   }
 
-  // 按需加载更多内容
   async loadMoreIfNeeded(currentIndex: number) {
     if (this.quotePageService) {
-      await this.quotePageService.loadMoreIfNeeded(
-        currentIndex,
-        this.quoteDataSource,
-        this.wallpaperList,
-        this.optimizedFontSizes
-      );
+      await this.quotePageService.loadMoreIfNeeded({
+        currentIndex: currentIndex,
+        quoteDataSource: this.quoteDataSource,
+        wallpaperList: this.wallpaperList,
+        optimizedFontSizes: this.optimizedFontSizes
+      });
     }
   }
 
-  // 更新当前页面的背景颜色
   async updateBackgroundForCurrentPage(index: number) {
     try {
-      const newBackground = await this.wallpaperUIService?.updateBackgroundForCurrentPage(index, this.wallpaperList) || '#2c3e50';
+      console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage index:', index, 'wallpaperList.length:', this.wallpaperList.length);
+      const newBackground = await this.wallpaperUIService?.updateBackgroundForCurrentPage(index, this.wallpaperList) || UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
 
-      // 使用动画更新背景
+      console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage 新背景色:', newBackground);
       animateTo({
         duration: 300,
         curve: Curve.EaseInOut
       }, () => {
         this.previewBackground = newBackground;
+        console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage 背景色已更新到:', this.previewBackground);
       });
 
       console.log('Background updated for page:', index, newBackground);
@@ -232,11 +220,11 @@ struct Index {
 
     try {
       const context = getContext(this) as common.UIAbilityContext;
-      const result = await this.wallpaperUIService?.applyWallpaperOptions(
-        this.setLockScreen,
-        this.saveToGallery,
-        context
-      );
+      const result = await this.wallpaperUIService?.applyWallpaperOptions({
+        setLockScreen: this.setLockScreen,
+        saveToGallery: this.saveToGallery,
+        context: context
+      });
 
       if (result) {
         console.log('壁纸操作完成:', result.message);
@@ -261,7 +249,6 @@ struct Index {
       return this.quotePageService.formatQuoteText(text, fontSize, containerWidth);
     }
 
-    // 降级处理
     return {
       text: text,
       fontSize: fontSize || 24,
@@ -271,158 +258,39 @@ struct Index {
 
 
   build() {
-    // 全屏预览区域
     Stack() {
-      // 背景预览区域（填满整个屏幕）
       Column()
         .width('100%')
         .height('100%')
-        .backgroundColor(this.previewBackground || '#667eea')
+        .backgroundColor(this.previewBackground || UI_CONSTANTS.FALLBACK_BACKGROUND_COLOR)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-
-      // 上下翻页的名言文本层，使用Swiper实现分页效果，参考helper6_page_turn.txt第38-54行
-      Swiper() {
-        LazyForEach(this.quoteDataSource, (quote: Quote, index: number) => {
-          Column() {
-            Text(this.formatQuoteText(quote.text).text)
-              .fontSize(this.optimizedFontSizes[index] || (this.wallpaperList[index]?.style.fontSize) || 24)
-              .fontColor((this.wallpaperList[index]?.style.textColor) || '#d3d3d3')
-              .textAlign(TextAlign.Center)
-              .width('100%')
-              .margin({ bottom: 40 })
-              .maxLines(20)
-              .textOverflow({ overflow: TextOverflow.None })
-
-            Text(`—— ${quote.author || ''}${(quote.author && quote.source) ? ' · ' : ''}${quote.source || ''}`)
-              .fontSize(12)
-              .fontColor((this.wallpaperList[index]?.style.textColor) || '#d3d3d3')
-              .opacity(0.8)
-              .textAlign(TextAlign.Center)
-              .width('100%')
-          }
-          .justifyContent(FlexAlign.Center)
-          .alignItems(HorizontalAlign.Center)
-          .padding(24)
-          .width('100%')
-          .height('100%')
-        }, (quote: Quote, index: number) => `${quote.text}-${index}`)
-      }
-      .index(this.currentPageIndex)
-      .width('100%')
-      .height('100%')
-      .indicator(false) // 隐藏指示器
-      .vertical(true) // 设置为垂直方向滑动
-      .loop(false) // 禁用循环滚动，防止在边界时继续滑动
-      .cachedCount(3) // 参考helper6_page_turn.txt第53行，设置缓存数量
-      .onChange((index: number) => {
-        // 确保索引在有效范围内
-        if (index >= 0 && index < this.quoteDataSource.totalCount()) {
-          this.onScrollIndex(index);
-          this.updateBackgroundForCurrentPage(index);
-          this.uiAnimationService?.resetHintTimer(); // 滑动切换时重置提示文字定时器
-        }
-      })
-      .onGestureSwipe((index: number, extraInfo: SwiperAnimationEvent) => {
-        this.uiAnimationService?.resetHintTimer(); // 滑动手势开始时立即重置提示文字定时器
-      })
-      .onAnimationStart((index: number, targetIndex: number, extraInfo: SwiperAnimationEvent) => {
-        // 防止向前滑动超出边界
-        if (targetIndex < 0) {
-          console.log('防止向前滑动超出边界');
-          return;
-        }
-        // 防止向后滑动超出边界
-        if (targetIndex >= this.quoteDataSource.totalCount()) {
-          console.log('防止向后滑动超出边界');
-          return;
-        }
+      QuoteSwiperComponent({
+        currentPageIndex: $currentPageIndex,
+        wallpaperList: this.wallpaperList,
+        optimizedFontSizes: this.optimizedFontSizes,
+        contentOpacity: this.contentOpacity,
+        formatQuoteText: this.formatQuoteText.bind(this),
+        onScrollIndex: this.onScrollIndex.bind(this),
+        updateBackgroundForCurrentPage: this.updateBackgroundForCurrentPage.bind(this),
+        resetHintTimer: () => this.uiAnimationService?.resetHintTimer()
       })
 
-      // 顶部标题栏 - 半透明层
-      Row() {
-        Blank()
-
-        Button() {
-          Text('...')
-            .fontSize(18)
-            .fontColor('#ffffff')
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor('rgba(255, 255, 255, 0)')
-        .borderRadius(20)
-        .backdropBlur(10)
-        .onClick(() => {
-          router.pushUrl({
-            url: 'pages/Settings'
-          });
-        })
-      }
-      .width('100%')
-      .height(60)
-      .padding({ left: 20, right: 20, top: 10, bottom: 10 })
-      .backgroundColor('rgba(0, 0, 0, 0)')
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
-      .position({ x: 0, y: 0 })
-
-      // 底部提示文字 - 半透明层
-      Column() {
-        Text('上下滑动切换 · 长按保存')
-          .fontSize(14)
-          .fontColor('#ffffff')
-          .textAlign(TextAlign.Center)
-          .padding({ top: 12, bottom: 12, left: 24, right: 24 })
-          .borderRadius(12)
-      }
-      .width('100%')
-      .padding({ left: 20, right: 20, bottom: 30, top: 20 })
-      .backgroundColor('rgba(0, 0, 0, 0)')
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-      .position({ x: 0, y: '100%' })
-      .translate({ y: '-100%' })
-      .opacity(this.hintOpacity)
-
-      // 全屏加载遮罩
-      if (this.isLoading) {
-        Stack() {
-          Column()
-            .width('100%')
-            .height('100%')
-            .backgroundColor('rgba(0, 0, 0, 0.4)')
-            .backdropBlur(10)
-
-          Column() {
-            LoadingProgress()
-              .width(50)
-              .height(50)
-              .margin({ bottom: 16 })
-
-            Text('正在生成壁纸...')
-              .fontSize(18)
-              .fontColor('#ffffff')
-          }
-          .justifyContent(FlexAlign.Center)
-          .alignItems(HorizontalAlign.Center)
-          .width(140)
-          .height(140)
-          .backgroundColor('rgba(44, 62, 80, 0.8)')
-          .borderRadius(16)
-          .backdropBlur(20)
-        }
-        .width('100%')
-        .height('100%')
-      }
-      // 隐藏的纯净壁纸组件用于截图
+      TopBarComponent()
+      HintTextComponent({ hintOpacity: this.hintOpacity })
+      LoadingOverlayComponent({ isLoading: this.isLoading })
       this.buildPureWallpaper()
     }
     .width('100%')
     .height('100%')
     .id('previewArea')
     .gesture(
-      // 长按手势：保存壁纸
-      LongPressGesture({ fingers: 1, repeat: false, duration: 800 })
+      LongPressGesture({
+        fingers: 1,
+        repeat: false,
+        duration: UI_CONSTANTS.LONG_PRESS_DURATION
+      })
         .onAction(() => {
-          this.uiAnimationService?.resetHintTimer(); // 长按时重置提示文字定时器
+          this.uiAnimationService?.resetHintTimer();
           this.showSaveDialog = true;
         })
     )
@@ -446,7 +314,6 @@ struct Index {
           .textAlign(TextAlign.Center)
           .margin({ bottom: 20 })
 
-        // 选项区域
         Column() {
           Column() {
             Row() {
@@ -567,36 +434,33 @@ struct Index {
 
   @Builder
   buildPureWallpaper() {
-    // 纯净的壁纸组件，只包含背景色和文字，用于截图保存
-    // 注意：截图组件不使用动画，始终显示完整内容
     Column() {
       if (this.getCurrentQuote()) {
-        // 显示当前页面的内容
         Text(this.formatQuoteText(this.getCurrentQuote()?.text || '').text)
-          .fontSize(this.optimizedFontSizes[this.currentPageIndex] || (this.getCurrentWallpaper()?.style.fontSize) || 24)
-          .fontColor((this.getCurrentWallpaper()?.style.textColor) || '#d3d3d3')
+          .fontSize(this.optimizedFontSizes[this.currentPageIndex] || (this.getCurrentWallpaper()?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE)
+          .fontColor((this.getCurrentWallpaper()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
           .textAlign(TextAlign.Center)
           .width('100%')
-          .margin({ bottom: 40 })
-          .maxLines(20)
+          .margin({ bottom: UI_CONSTANTS.TEXT_BOTTOM_MARGIN })
+          .maxLines(UI_CONSTANTS.TEXT_LAYOUT.MAX_LINES)
           .textOverflow({ overflow: TextOverflow.None })
 
         Text(`—— ${this.getCurrentQuote()?.author || ''}${(this.getCurrentQuote()?.author && this.getCurrentQuote()?.source) ? ' · ' : ''}${this.getCurrentQuote()?.source || ''}`)
-          .fontSize(12)
-          .fontColor((this.getCurrentWallpaper()?.style.textColor) || '#d3d3d3')
-          .opacity(0.8)
+          .fontSize(UI_CONSTANTS.AUTHOR_FONT_SIZE)
+          .fontColor((this.getCurrentWallpaper()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+          .opacity(UI_CONSTANTS.AUTHOR_TEXT_OPACITY)
           .textAlign(TextAlign.Center)
           .width('100%')
       }
     }
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
-    .padding(24)
+    .padding(UI_CONSTANTS.CONTAINER_PADDING)
     .width('100%')
     .height('100%')
-    .backgroundColor(this.previewBackground || '#667eea')
+    .backgroundColor(this.previewBackground || UI_CONSTANTS.FALLBACK_BACKGROUND_COLOR)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .id('pureWallpaperArea')
-    .position({ x: -2000, y: 0 }) // 移到屏幕外，不可见但可以截图
+    .position({ x: UI_CONSTANTS.PURE_WALLPAPER_OFFSET_X, y: 0 })
   }
 }
