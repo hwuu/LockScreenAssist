@@ -28,6 +28,18 @@ export interface WallpaperOperationResult {
   gallerySuccess: boolean;
 }
 
+interface TextColors {
+  white: string;
+  softWhite: string;
+  warmWhite: string;
+  coolWhite: string;
+  lightGray: string;
+  silver: string;
+  platinum: string;
+  charcoal: string;
+  midnight: string;
+}
+
 export class WallpaperService {
   private static readonly WALLPAPER_STORAGE_KEY = "current_wallpaper";
 
@@ -35,62 +47,86 @@ export class WallpaperService {
   static generateWallpaperStyle(quote: Quote): WallpaperStyle {
     const textLength = quote.text.length;
 
-    // 深色系、低对比度、高级感背景色
-    const darkBackgrounds = [
-      // 深灰蓝系
-      '#2c3e50', // 经典深灰蓝
-      '#34495e', // 深石板灰
-      '#1a252f', // 深夜蓝
-      '#273c75', // 深宝蓝
-      '#40407a', // 深紫蓝
-      '#2d3436', // 深炭灰
-      '#636e72', // 中性灰
+      const darkBackgrounds = [
+      // 蓝色系
+      '#1a1a2e',    // 深紫蓝
+      '#16213e',    // 暗海军蓝
+      '#0f3460',    // 深钴蓝
+      '#1a202c',    // 午夜蓝
+      '#171923',    // 深靛蓝
+      '#1e3a8a',    // 皇家蓝
+      '#1e40af',    // 钴蓝
+      '#1d4ed8',    // 蓝宝石
+      '#2563eb',    // 天蓝
+      '#1e293b',    // 深蓝灰
+      '#0f172a',    // 墨蓝
+      '#020617',    // 深夜蓝
+      '#0c4a6e',    // 深天蓝
+      '#075985',    // 海洋蓝
+      '#0369a1',    // 湖蓝
+      '#0284c7',    // 天空蓝
 
-      // 深绿系
-      '#00b894', // 深翠绿
-      '#00a085', // 深翡翠
-      '#2d3748', // 深灰绿
-      '#22543d', // 深森绿
-      '#2f855a', // 低调绿
-      '#319795', // 深青绿
+      // 紫色系
+      '#581c87',    // 深紫
+      '#6b21a8',    // 葡萄紫
+      '#4c1d95',    // 深靛紫
+      '#5b21b6',    // 紫罗兰
+      '#6d28d9',    // 亮紫
+      '#553c9a',    // 薰衣草紫
+      '#701a75',    // 深品红
 
-      // 深紫系
-      '#6c5ce7', // 优雅紫
-      '#5f3dc4', // 深紫罗兰
-      '#553c9a', // 深葡萄紫
-      '#44337a', // 深丁香紫
-      '#322659', // 深紫灰
+      // 绿色系
+      '#14532d',    // 深森林绿
+      '#166534',    // 祖母绿
+      '#15803d',    // 翠绿
+      '#16a34a',    // 草绿
+      '#0d9488',    // 青绿
+      '#0f766e',    // 深青
+      '#134e4a',    // 暗绿松石
 
-      // 深棕系
-      '#8b5a2b', // 深焦糖色
-      '#744c3e', // 深咖啡色
-      '#5d4e37', // 深古铜色
-      '#654321', // 深栗色
-      '#8b4513', // 深马鞍色
+      // 棕色系
+      '#78350f',    // 深棕
+      '#92400e',    // 红棕
+      '#a16207',    // 黄棕
+      '#a97817',    // 芥末黄
+      '#713f12',    // 深焦糖
+      '#451a03',    // 暗棕
+      '#3c2a1e',    // 咖啡色
+      '#7c2d12',    // 深棕红
 
-      // 深红系
-      '#c0392b', // 深红
-      '#a93226', // 深紫红
-      '#922b21', // 深酒红
-      '#7b241c', // 深栗红
-      '#641e16', // 深棕红
+      // 红色系
+      '#7f1d1d',    // 深红
+      '#991b1b',    // 酒红
+      '#b91c1c',    // 猩红
+      '#dc2626',    // 正红
+      '#9f1239',    // 深玫红
+      '#881337',    // 暗玫瑰
 
-      // 特殊深色
-      '#2c2c54', // 深鬼紫
-      '#474787', // 灰紫蓝
-      '#40739e', // 深钢蓝
-      '#487eb0', // 低调蓝
-      '#8c7851', // 深古金
-      '#596275', // 深灰青
-      '#1e3799', // 深皇家蓝
-      '#3c6382', // 深海蓝
-      '#40514e'  // 深石青
+      // 灰色系
+      '#1e2124',    // 石墨灰
+      '#2c2f33',    // 暗灰
+      '#23272a',    // 炭黑
+      '#36393f',    // 深钢灰
+      '#4a5568',    // 板岩灰
+      '#2d3748',    // 暗石板
+      '#2b2d3a',    // 暗铁灰
+      '#313540',    // 深炭灰
+      '#3d4852',    // 暗青灰
+      '#1c1917',    // 暗石色
+      '#292524',    // 深石灰
+      '#44403c',    // 暖灰
+      '#57534e',    // 中性灰
+      '#111827',    // 深灰蓝
+      '#1f2937',    // 暗蓝灰
+      '#374151',    // 中灰蓝
+      '#4b5563',    // 浅灰蓝
+      '#6b7280',    // 银灰
+      '#18181b',    // 深炭
+      '#27272a',    // 暗锌灰
+      '#3f3f46'     // 中锌灰
     ];
 
-    // 随机选择深色背景
     const randomBackground = darkBackgrounds[Math.floor(Math.random() * darkBackgrounds.length)];
-
-    // 根据背景颜色自动调整文字颜色以确保可读性
     const textColor = WallpaperService.calculateOptimalTextColor(randomBackground);
 
     let style: WallpaperStyle = {
@@ -113,23 +149,85 @@ export class WallpaperService {
     const g = parseInt(hex.substr(2, 2), 16);
     const b = parseInt(hex.substr(4, 2), 16);
 
-    // 计算亮度 (使用 WCAG 2.0 公式)
-    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    // 计算亮度 (使用 WCAG 2.1 相对亮度公式)
+    const getRGBLuminance = (value: number) => {
+      const normalized = value / 255;
+      return normalized <= 0.03928
+        ? normalized / 12.92
+        : Math.pow((normalized + 0.055) / 1.055, 2.4);
+    };
 
-    // 根据背景亮度选择文字颜色，提高对比度
-    if (brightness > 155) {
-      // 亮背景使用深色文字
-      return '#1a202c';
-    } else if (brightness > 100) {
-      // 中等亮度背景使用高对比度深色文字
-      return '#ffffff';
-    } else if (brightness > 60) {
-      // 偏暗背景使用纯白文字
-      return '#ffffff';
+    const luminance = 0.2126 * getRGBLuminance(r) +
+                     0.7152 * getRGBLuminance(g) +
+                     0.0722 * getRGBLuminance(b);
+
+    // 高级感文字颜色选择
+    const textColors: TextColors = {
+      // 高对比度白色系
+      white: '#ffffff',           // 纯白
+      softWhite: '#f8fafc',      // 柔和白
+      warmWhite: '#fefefe',      // 暖白
+      coolWhite: '#f1f5f9',      // 冷白
+
+      // 优雅浅色系
+      lightGray: '#e2e8f0',      // 浅灰
+      silver: '#cbd5e1',         // 银色
+      platinum: '#d1d5db',       // 铂金色
+
+      // 深色文字（极少使用）
+      charcoal: '#1f2937',       // 炭灰
+      midnight: '#111827'        // 午夜蓝
+    };
+
+    // 根据背景亮度和色调智能选择文字颜色
+    if (luminance > 0.5) {
+      // 亮背景：使用深色文字
+      return textColors.charcoal;
+    } else if (luminance > 0.18) {
+      // 中等亮度背景：使用高对比度白色
+      return textColors.white;
+    } else if (luminance > 0.05) {
+      // 深色背景：使用柔和白色，更舒适
+      return textColors.softWhite;
     } else {
-      // 深色背景使用高亮度白色文字
-      return '#f8f9fa';
+      // 极深背景：使用暖白色，增加层次感
+      // 根据背景颜色倾向选择不同的白色调
+      const hue = WallpaperService.calculateHue(r, g, b);
+
+      if (hue >= 200 && hue <= 260) {
+        // 蓝色系背景使用暖白平衡
+        return textColors.warmWhite;
+      } else if (hue >= 260 && hue <= 320) {
+        // 紫色系背景使用冷白
+        return textColors.coolWhite;
+      } else if (hue >= 80 && hue <= 160) {
+        // 绿色系背景使用柔和白
+        return textColors.softWhite;
+      } else {
+        // 其他颜色使用纯白
+        return textColors.white;
+      }
     }
+  }
+
+  // 计算颜色的色调
+  private static calculateHue(r: number, g: number, b: number): number {
+    const max = Math.max(r, g, b) / 255;
+    const min = Math.min(r, g, b) / 255;
+    const delta = max - min;
+
+    if (delta === 0) return 0;
+
+    let hue = 0;
+    if (max === r / 255) {
+      hue = ((g / 255 - b / 255) / delta) % 6;
+    } else if (max === g / 255) {
+      hue = (b / 255 - r / 255) / delta + 2;
+    } else {
+      hue = (r / 255 - g / 255) / delta + 4;
+    }
+
+    return hue * 60;
   }
 
   // 计算最佳字体大小（调小）

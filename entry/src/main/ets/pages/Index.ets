@@ -1,21 +1,23 @@
-import { QuoteData, Quote } from '../common/QuoteData';
-import { QuoteSelectionService } from '../services/QuoteSelectionService';
-import { WallpaperService, GeneratedWallpaper, WallpaperStyle, WallpaperOperationResult } from '../services/WallpaperService';
+import { Quote } from '../common/QuoteData';
+import { GeneratedWallpaper } from '../services/WallpaperService';
+import { WallpaperConfig } from '../common/ScheduleConfig';
 import router from '@ohos.router';
-import { ScheduleConfig, WallpaperConfig } from '../common/ScheduleConfig';
-import display from '@ohos.display';
-import componentSnapshot from '@ohos.arkui.componentSnapshot';
-import fs from '@ohos.file.fs';
-import image from '@ohos.multimedia.image';
-import { BusinessError } from '@ohos.base';
+import { QuoteDataSource } from '../common/QuoteDataSource';
+import { AppInitializationService } from '../services/AppInitializationService';
+import { QuotePageService } from '../services/QuotePageService';
+import { WallpaperUIService } from '../services/WallpaperUIService';
+import { UIAnimationService } from '../services/UIAnimationService';
+import { TextLayoutResult } from '../common/TextLayoutTypes';
+import { UI_CONSTANTS } from '../common/UIConstants';
+import { TopBarComponent } from '../components/TopBarComponent';
+import { HintTextComponent } from '../components/HintTextComponent';
+import { LoadingOverlayComponent } from '../components/LoadingOverlayComponent';
+import { QuoteSwiperComponent } from '../components/QuoteSwiperComponent';
 import common from '@ohos.app.ability.common';
-import photoAccessHelper from '@ohos.file.photoAccessHelper';
-// SaveButton is not available in HarmonyOS API, using regular Button instead
-
 @Entry
 @Component
 struct Index {
-  @State currentQuote: Quote = QuoteData.getRandomQuote();
+  @State currentQuote: Quote | null = null;
   @State currentWallpaper: GeneratedWallpaper | null = null;
   @State isLoading: boolean = false;
   @State previewBackground: string = '';
@@ -26,179 +28,129 @@ struct Index {
 
   @State config: WallpaperConfig | null = null;
   @State showSaveDialog: boolean = false;
-  @State screenRatio: number = 16/9; // 默认比例
+  @State screenRatio: number = UI_CONSTANTS.DEFAULT_SCREEN_RATIO;
   @State screenWidth: number = 0;
   @State screenHeight: number = 0;
-  @State setLockScreen: boolean = false; // 官方已不支持该功能
-  @State saveToGallery: boolean = true; // 默认选中保存到图库
-  @State isApplying: boolean = false; // 应用壁纸的状态
-  @State hintOpacity: number = 0; // 提示文字透明度
-  @State contentOpacity: number = 1; // 内容区域透明度
-  @State isTransitioning: boolean = false; // 是否在过渡动画中
-  private hintTimer: number = -1; // 提示文字定时器
-  private debounceTimer: number = -1; // 防抖定时器
+  @State setLockScreen: boolean = false;
+  @State saveToGallery: boolean = true;
+  @State isApplying: boolean = false;
+  @State hintOpacity: number = 0;
+  @State contentOpacity: number = 1;
+  @State isTransitioning: boolean = false;
+
+  @State currentPageIndex: number = 0;
+  @Provide quoteDataSource: QuoteDataSource = new QuoteDataSource();
+  @State wallpaperList: (GeneratedWallpaper | null)[] = [];
+  @State optimizedFontSizes: number[] = [];
+
+  private appInitService: AppInitializationService | null = null;
+  private quotePageService: QuotePageService | null = null;
+  private wallpaperUIService: WallpaperUIService | null = null;
+  private uiAnimationService: UIAnimationService | null = null;
 
   async aboutToAppear() {
-    await this.getScreenRatio();
-    await this.loadConfig();
-    await this.loadQuoteSource();
-    await this.loadCurrentWallpaper();
-    await this.updatePreview();
-    this.startHintTimer();
-  }
+    console.log('CLAUDE_DEBUG: Index.aboutToAppear 开始');
+    this.appInitService = new AppInitializationService();
+    this.wallpaperUIService = new WallpaperUIService();
 
-  async loadQuoteSource() {
-    try {
-      const QuoteDataModule = await import('../common/QuoteData');
-      await QuoteDataModule.QuoteData.loadQuoteSource();
-    } catch (error) {
-      console.error('Failed to load quote source in Index:', error);
-    }
-  }
-
-  // 启动提示文字定时器
-  startHintTimer() {
-    this.clearHintTimer();
-    this.hintTimer = setTimeout(() => {
-      this.showHint();
-    }, 5000);
-  }
-
-  // 清除提示文字定时器
-  clearHintTimer() {
-    if (this.hintTimer !== -1) {
-      clearTimeout(this.hintTimer);
-      this.hintTimer = -1;
-    }
-  }
-
-  // 显示提示文字
-  showHint() {
-    animateTo({
-      duration: 1000,
-      curve: Curve.EaseInOut
-    }, () => {
-      this.hintOpacity = 0.8;
-    });
-  }
-
-  // 隐藏提示文字
-  hideHint() {
-    // 只有在当前显示状态下才执行隐藏动画
-    if (this.hintOpacity > 0) {
+    this.uiAnimationService = new UIAnimationService((opacity: number) => {
       animateTo({
-        duration: 1000,
+        duration: opacity > this.hintOpacity ? UI_CONSTANTS.ANIMATION_DURATION_LONG : UI_CONSTANTS.ANIMATION_DURATION_MEDIUM,
         curve: Curve.EaseInOut
       }, () => {
-        this.hintOpacity = 0;
+        this.hintOpacity = opacity;
       });
-    }
+    });
+    const context = getContext(this) as common.UIAbilityContext;
+    console.log('CLAUDE_DEBUG: Index 获取到context, 开始初始化应用');
+    const initResult = await this.appInitService.initializeApp(context);
+    console.log('CLAUDE_DEBUG: Index 应用初始化完成, initResult:', {
+      hasQuote: !!initResult.currentQuote,
+      hasWallpaper: !!initResult.currentWallpaper,
+      screenInfo: initResult.screenInfo
+    });
+
+    this.screenWidth = initResult.screenInfo.width;
+    this.screenHeight = initResult.screenInfo.height;
+    this.screenRatio = initResult.screenInfo.ratio;
+    this.config = initResult.config;
+    this.currentQuote = initResult.currentQuote;
+    this.currentWallpaper = initResult.currentWallpaper;
+
+    console.log('CLAUDE_DEBUG: Index 当前名言:', this.currentQuote?.text || 'null');
+
+    this.quotePageService = new QuotePageService(this.screenWidth, this.screenHeight);
+    console.log('CLAUDE_DEBUG: Index 开始初始化QuoteList, currentQuote:', this.currentQuote?.text || 'null');
+    const quoteResult = await this.quotePageService.initializeQuoteList({
+      currentQuote: this.currentQuote,
+      currentWallpaper: this.currentWallpaper,
+      quoteDataSource: this.quoteDataSource,
+      wallpaperList: this.wallpaperList,
+      optimizedFontSizes: this.optimizedFontSizes
+    });
+
+    this.currentQuote = quoteResult.quote;
+    this.currentWallpaper = quoteResult.wallpaper;
+    console.log('CLAUDE_DEBUG: Index QuoteList初始化完成, 最终名言:', this.currentQuote?.text || 'null');
+
+    await this.updatePreview();
+    await this.updateBackgroundForCurrentPage(this.currentPageIndex);
+    this.uiAnimationService?.startHintTimer();
   }
 
-  // 重置提示文字定时器（带防抖）
-  resetHintTimer() {
-    // 清除防抖定时器
-    if (this.debounceTimer !== -1) {
-      clearTimeout(this.debounceTimer);
-    }
 
-    // 设置防抖，200ms内的连续操作只执行最后一次
-    this.debounceTimer = setTimeout(() => {
-      // 立即清除定时器，避免重复触发
-      this.clearHintTimer();
-      // 只有在显示状态下才执行隐藏动画
-      this.hideHint();
-      // 重新启动定时器
-      this.startHintTimer();
-      this.debounceTimer = -1;
-    }, 200);
+
+
+
+
+
+  getCurrentQuote(): Quote | null {
+    const totalCount = this.quoteDataSource.totalCount();
+    console.log(`CLAUDE_DEBUG: Index.getCurrentQuote pageIndex=${this.currentPageIndex}, totalCount=${totalCount}`);
+    if (totalCount > this.currentPageIndex) {
+      const quote = this.quoteDataSource.getData(this.currentPageIndex);
+      console.log('CLAUDE_DEBUG: Index.getCurrentQuote 从DataSource获取:', quote?.text || 'null');
+      return quote;
+    }
+    console.log('CLAUDE_DEBUG: Index.getCurrentQuote 使用currentQuote:', this.currentQuote?.text || 'null');
+    return this.currentQuote;
   }
 
-  async getScreenRatio() {
-    try {
-      const defaultDisplay = display.getDefaultDisplaySync();
-      // 计算竖屏比例（高度/宽度）
-      this.screenRatio = defaultDisplay.height / defaultDisplay.width;
-      this.screenWidth = defaultDisplay.width;
-      this.screenHeight = defaultDisplay.height;
-      console.log(`Screen ratio: ${this.screenRatio} (${defaultDisplay.width}x${defaultDisplay.height})`);
-    } catch (error) {
-      console.error('Failed to get screen ratio:', error);
-      this.screenRatio = 16/9; // 保持默认比例
-      this.screenWidth = 360;
-      this.screenHeight = 640;
+  getCurrentWallpaper(): GeneratedWallpaper | null {
+    if (this.wallpaperList.length > this.currentPageIndex) {
+      return this.wallpaperList[this.currentPageIndex];
     }
-  }
-
-  async loadConfig() {
-    try {
-      this.config = await ScheduleConfig.getConfig();
-    } catch (error) {
-      console.error('Failed to load config:', error);
-    }
-  }
-
-  async loadCurrentWallpaper() {
-    this.currentWallpaper = await WallpaperService.getCurrentWallpaper();
-    if (!this.currentWallpaper && this.config) {
-      try {
-        const selectedQuote = await QuoteSelectionService.selectQuote(this.config.selectionAlgorithm);
-        this.currentQuote = selectedQuote;
-        this.currentWallpaper = await WallpaperService.generateWallpaper(selectedQuote);
-      } catch (error) {
-        console.error('Failed to load initial wallpaper:', error);
-      }
-    }
+    return this.currentWallpaper;
   }
 
 
   async updatePreview() {
     try {
-      // 设置过渡状态，禁用手势响应
       this.isTransitioning = true;
 
-      let newBackground = '#2c3e50';
+      const currentWallpaper = this.getCurrentWallpaper();
+      const newBackground = await this.wallpaperUIService?.updatePreview(currentWallpaper) || '#2c3e50';
 
-      if (this.previewMode === 'recommended' && this.recommendedWallpaper) {
-        const previewResult = WallpaperService.createWallpaperPreview(this.recommendedWallpaper);
-        if (previewResult) {
-          newBackground = previewResult;
-        } else {
-          newBackground = this.recommendedWallpaper.style.backgroundColor || '#2c3e50';
-        }
-      } else if (this.currentWallpaper) {
-        const previewResult = WallpaperService.createWallpaperPreview(this.currentWallpaper);
-        if (previewResult) {
-          newBackground = previewResult;
-        } else {
-          newBackground = this.currentWallpaper.style.backgroundColor || '#2c3e50';
-        }
-      }
-
-      // 内容淡出 -> 更新背景和内容 -> 内容淡入
-      // 第一阶段：内容淡出
       animateTo({
-        duration: 250,
+        duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
         curve: Curve.EaseInOut
       }, () => {
         this.contentOpacity = 0;
       });
 
-      // 第二阶段：更新背景，然后内容淡入
       setTimeout(() => {
         animateTo({
-          duration: 250,
+          duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
           curve: Curve.EaseInOut
         }, () => {
           this.previewBackground = newBackground;
           this.contentOpacity = 1;
         });
 
-        // 动画完成后恢复手势响应
         setTimeout(() => {
           this.isTransitioning = false;
-        }, 250);
-      }, 250);
+        }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
+      }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
 
       setTimeout(() => {
         console.log('Preview updated:', this.previewBackground);
@@ -206,114 +158,54 @@ struct Index {
     } catch (error) {
       console.error('Failed to update preview:', error);
       animateTo({
-        duration: 500,
+        duration: UI_CONSTANTS.ANIMATION_DURATION_FADE,
         curve: Curve.EaseInOut
       }, () => {
-        this.previewBackground = '#2c3e50';
+        this.previewBackground = UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
         this.contentOpacity = 1;
       });
 
-      // 错误情况下也要恢复手势响应
       setTimeout(() => {
         this.isTransitioning = false;
-      }, 500);
+      }, UI_CONSTANTS.ANIMATION_DURATION_FADE);
     }
   }
 
-  async viewCurrent() {
-    this.previewMode = 'current';
-    await this.updatePreview();
+  onScrollIndex(firstIndex: number) {
+    console.log('CLAUDE_DEBUG: Index.onScrollIndex 从', this.currentPageIndex, '到', firstIndex);
+    this.currentPageIndex = firstIndex;
+    console.log('CLAUDE_DEBUG: Index.onScrollIndex 更新后 currentPageIndex:', this.currentPageIndex);
+    this.loadMoreIfNeeded(firstIndex);
   }
 
-  async recommendNext() {
-    // 如果正在过渡中，直接返回
-    if (this.isTransitioning) {
-      return;
+  async loadMoreIfNeeded(currentIndex: number) {
+    if (this.quotePageService) {
+      await this.quotePageService.loadMoreIfNeeded({
+        currentIndex: currentIndex,
+        quoteDataSource: this.quoteDataSource,
+        wallpaperList: this.wallpaperList,
+        optimizedFontSizes: this.optimizedFontSizes
+      });
     }
+  }
 
+  async updateBackgroundForCurrentPage(index: number) {
     try {
-      this.isLoading = true;
-      this.recommendedQuote = null;
-      this.recommendedWallpaper = null;
-      this.previewMode = 'current';
-      await this.updatePreview();
+      console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage index:', index, 'wallpaperList.length:', this.wallpaperList.length);
+      const newBackground = await this.wallpaperUIService?.updateBackgroundForCurrentPage(index, this.wallpaperList) || UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
 
-      console.log('Starting recommendation process...');
-
-      const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(20);
-      console.log('Got recommended quotes:', recommendedQuotes.length);
-
-      if (!recommendedQuotes || recommendedQuotes.length === 0) {
-        throw new Error('No recommended quotes available');
-      }
-
-      const unusedQuotes = recommendedQuotes.filter(quote => {
-        const quoteKey = `${quote.text}-${quote.author}`;
-        return !this.usedRecommendations.has(quoteKey);
+      console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage 新背景色:', newBackground);
+      animateTo({
+        duration: 300,
+        curve: Curve.EaseInOut
+      }, () => {
+        this.previewBackground = newBackground;
+        console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage 背景色已更新到:', this.previewBackground);
       });
 
-      let selectedQuote: Quote;
-
-      if (unusedQuotes.length > 0) {
-        const randomIndex = Math.floor(Math.random() * unusedQuotes.length);
-        selectedQuote = unusedQuotes[randomIndex];
-      } else {
-        this.usedRecommendations.clear();
-        const randomIndex = Math.floor(Math.random() * recommendedQuotes.length);
-        selectedQuote = recommendedQuotes[randomIndex];
-      }
-
-      if (!selectedQuote) {
-        throw new Error('Failed to select a quote');
-      }
-
-      console.log('Selected quote:', selectedQuote.text);
-
-      const quoteKey = `${selectedQuote.text}-${selectedQuote.author}`;
-      this.usedRecommendations.add(quoteKey);
-      this.recommendedQuote = selectedQuote;
-
-      let generatedWallpaper: GeneratedWallpaper;
-      try {
-        generatedWallpaper = await WallpaperService.generateWallpaper(this.recommendedQuote);
-        console.log('Generated wallpaper:', generatedWallpaper);
-      } catch (wallpaperError) {
-        console.error('Failed to generate wallpaper, creating fallback:', wallpaperError);
-        const fallbackStyle: WallpaperStyle = {
-          backgroundColor: '#2c3e50',
-          textColor: '#d3d3d3',
-          fontSize: 32,
-          fontFamily: 'HarmonyOS Sans',
-          textAlign: 'center',
-          backgroundOpacity: 1.0
-        };
-        generatedWallpaper = {
-          quote: this.recommendedQuote,
-          style: fallbackStyle,
-          createdAt: new Date()
-        };
-      }
-
-      this.recommendedWallpaper = generatedWallpaper;
-
-      if (!this.recommendedQuote || !this.recommendedWallpaper) {
-        throw new Error('Recommendation data is incomplete');
-      }
-
-      this.previewMode = 'recommended';
-      console.log('Switching to recommended mode');
-      await this.updatePreview();
-      console.log('Recommendation completed successfully');
-
+      console.log('Background updated for page:', index, newBackground);
     } catch (error) {
-      console.error('Failed to load recommendation:', error);
-      if (!this.currentQuote) {
-        this.currentQuote = QuoteData.getRandomQuote();
-      }
-      this.previewMode = 'current';
-      await this.updatePreview();
-    } finally {
-      this.isLoading = false;
+      console.error('Failed to update background for current page:', error);
     }
   }
 
@@ -327,312 +219,80 @@ struct Index {
     this.isApplying = true;
 
     try {
-      console.log('开始应用壁纸操作...');
-
-      // 使用componentSnapshot API截图纯净壁纸区域
-      componentSnapshot.get("pureWallpaperArea", async (error: Error, pixelMap: image.PixelMap) => {
-        if (error) {
-          console.error("截图失败: " + JSON.stringify(error));
-          this.isApplying = false;
-          this.showSaveDialog = false;
-          return;
-        }
-
-        try {
-          // 将PixelMap保存为JPEG格式
-          const packOpts: image.PackingOption = {
-            format: "image/jpeg",
-            quality: 98
-          };
-
-          const imagePacker: image.ImagePacker = image.createImagePacker();
-          const arrayBuffer: ArrayBuffer = await imagePacker.packing(pixelMap, packOpts);
-
-          // 创建临时文件
-          const context = getContext(this) as common.UIAbilityContext;
-          const filesDir: string = context.filesDir;
-          const tempImagePath = `${filesDir}/temp_wallpaper_${Date.now()}.jpg`;
-
-          // 保存临时文件
-          const file = await fs.open(tempImagePath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-          await fs.write(file.fd, arrayBuffer);
-          await fs.close(file.fd);
-
-          // 执行选定的操作
-          const results = await WallpaperService.applyWallpaperOperations(
-            tempImagePath,
-            this.setLockScreen,
-            this.saveToGallery
-          );
-
-          // 显示结果
-          let message = '';
-          if (this.setLockScreen && results.lockScreenSuccess) {
-            message += '锁屏壁纸设置成功！';
-          } else if (this.setLockScreen && !results.lockScreenSuccess) {
-            message += '锁屏壁纸设置失败！';
-          }
-
-          if (this.saveToGallery && results.gallerySuccess) {
-            if (message) message += '\n';
-            message += '图片已保存到图库！';
-          } else if (this.saveToGallery && !results.gallerySuccess) {
-            if (message) message += '\n';
-            message += '图片保存到图库失败！';
-          }
-
-          console.log('壁纸操作完成:', message);
-
-          // 清理临时文件
-          try {
-            await fs.unlink(tempImagePath);
-          } catch (unlinkError) {
-            console.error('清理临时文件失败:', unlinkError);
-          }
-
-          // 释放资源
-          imagePacker.release();
-          pixelMap.release();
-
-        } catch (packError) {
-          console.error('图片处理失败:', packError);
-          pixelMap.release();
-        } finally {
-          this.isApplying = false;
-          this.showSaveDialog = false;
-        }
+      const context = getContext(this) as common.UIAbilityContext;
+      const result = await this.wallpaperUIService?.applyWallpaperOptions({
+        setLockScreen: this.setLockScreen,
+        saveToGallery: this.saveToGallery,
+        context: context
       });
 
+      if (result) {
+        console.log('壁纸操作完成:', result.message);
+      }
     } catch (error) {
       console.error('应用壁纸失败:', error);
+    } finally {
       this.isApplying = false;
       this.showSaveDialog = false;
     }
   }
 
   /**
-   * 保存ArrayBuffer到图库 - 参考_helper.txt第86-94行的实现
-   * @param buffer：图片ArrayBuffer
+   * 智能格式化名言文本，避免孤行和标点符号行首
+   * @param text 原始文本
+   * @param fontSize 字体大小
+   * @param containerWidth 容器宽度
+   * @returns 格式化后的文本布局结果
    */
-  formatQuoteText(text: string): string {
-    // 按照中英文标点符号分行
-    let formattedText = text
-      // 逗号后单换行
-      .replace(/([，,])\s*/g, '$1\n')
-      // 其他中文标点符号后双换行（空一行）
-      .replace(/([。！？；：])\s*/g, '$1\n\n')
-      // 其他英文标点符号后双换行（空一行）
-      .replace(/([.!?;:])\s*/g, '$1\n\n')
-      // 清理多余的换行和空格
-      .replace(/\n{3,}/g, '\n\n') // 最多保留双换行
-      .replace(/\s*\n\s*/g, '\n')
-      .trim();
+  formatQuoteText(text: string, fontSize?: number, containerWidth?: number): TextLayoutResult {
+    if (this.quotePageService) {
+      return this.quotePageService.formatQuoteText(text, fontSize, containerWidth);
+    }
 
-    return formattedText;
+    return {
+      text: text,
+      fontSize: fontSize || 24,
+      lines: [text]
+    };
   }
 
-  async saveImageToPhoto(buffer: ArrayBuffer): Promise<void> {
-    // 按照 _helper.txt 第86-94行的方法实现
-    const context = getContext(this) as common.UIAbilityContext;
-    const helper = photoAccessHelper.getPhotoAccessHelper(context);
-    const uri = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg');
-    const file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-    await fs.write(file.fd, buffer);
-    await fs.close(file.fd);
-    console.log("图片保存成功到相册:", uri);
-  }
 
   build() {
-    // 全屏预览区域
     Stack() {
-      // 背景预览区域（填满整个屏幕）
       Column()
         .width('100%')
         .height('100%')
-        .backgroundColor(this.previewBackground || '#667eea')
+        .backgroundColor(this.previewBackground || UI_CONSTANTS.FALLBACK_BACKGROUND_COLOR)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      QuoteSwiperComponent({
+        currentPageIndex: $currentPageIndex,
+        wallpaperList: this.wallpaperList,
+        optimizedFontSizes: this.optimizedFontSizes,
+        contentOpacity: this.contentOpacity,
+        formatQuoteText: this.formatQuoteText.bind(this),
+        onScrollIndex: this.onScrollIndex.bind(this),
+        updateBackgroundForCurrentPage: this.updateBackgroundForCurrentPage.bind(this),
+        resetHintTimer: () => this.uiAnimationService?.resetHintTimer()
+      })
 
-      // 名言文本层
-      Column() {
-        if (this.isLoading) {
-          // 加载状态
-          Column() {
-            LoadingProgress()
-              .width(40)
-              .height(40)
-              .color('#d3d3d3')
-              .margin({ bottom: 12 })
-
-            Text('正在生成推荐...')
-              .fontSize(16)
-              .fontColor('#d3d3d3')
-              .textAlign(TextAlign.Center)
-          }
-          .justifyContent(FlexAlign.Center)
-          .alignItems(HorizontalAlign.Center)
-        } else if (this.previewMode === 'recommended' && this.recommendedQuote) {
-          // 推荐模式显示推荐内容
-          Text(this.formatQuoteText(this.recommendedQuote.text))
-            .fontSize((this.recommendedWallpaper?.style.fontSize) || 24)
-            .fontColor((this.recommendedWallpaper?.style.textColor) || '#d3d3d3')
-            .textAlign(TextAlign.Center)
-            .width('100%')
-            .margin({ bottom: 40 })
-            .maxLines(20)
-            .textOverflow({ overflow: TextOverflow.None })
-            .opacity(this.contentOpacity)
-
-          Text(`—— ${this.recommendedQuote.author || ''}${(this.recommendedQuote.author && this.recommendedQuote.source) ? ' · ' : ''}${this.recommendedQuote.source || ''}`)
-            .fontSize(12)
-            .fontColor((this.recommendedWallpaper?.style.textColor) || '#d3d3d3')
-            .opacity(0.8 * this.contentOpacity)
-            .textAlign(TextAlign.Center)
-            .width('100%')
-        } else if (this.currentQuote) {
-          // 当前模式或推荐内容不存在时显示当前内容
-          Text(this.formatQuoteText(this.currentQuote.text))
-            .fontSize((this.currentWallpaper?.style.fontSize) || 24)
-            .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
-            .textAlign(TextAlign.Center)
-            .width('100%')
-            .margin({ bottom: 40 })
-            .maxLines(20)
-            .textOverflow({ overflow: TextOverflow.None })
-            .opacity(this.contentOpacity)
-
-          Text(`—— ${this.currentQuote.author || ''}${(this.currentQuote.author && this.currentQuote.source) ? ' · ' : ''}${this.currentQuote.source || ''}`)
-            .fontSize(12)
-            .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
-            .opacity(0.8 * this.contentOpacity)
-            .textAlign(TextAlign.Center)
-            .width('100%')
-        } else {
-          // 最后的保护：显示占位文本
-          Text('正在加载壁纸...')
-            .fontSize(16)
-            .fontColor('#d3d3d3')
-            .textAlign(TextAlign.Center)
-            .opacity(this.contentOpacity)
-        }
-      }
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .padding(24)
-      .width('100%')
-      .height('100%')
-      .opacity(this.contentOpacity)
-
-      // 顶部标题栏 - 半透明层
-      Row() {
-        Text('锁屏助手')
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#ffffff')
-
-        Blank()
-
-        Button() {
-          Text('⚙')
-            .fontSize(18)
-            .fontColor('#ffffff')
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor('rgba(255, 255, 255, 0.2)')
-        .borderRadius(20)
-        .backdropBlur(10)
-        .onClick(() => {
-          router.pushUrl({
-            url: 'pages/Settings'
-          });
-        })
-      }
-      .width('100%')
-      .height(60)
-      .padding({ left: 20, right: 20, top: 10, bottom: 10 })
-      .backgroundColor('rgba(0, 0, 0, 0)')
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
-      .position({ x: 0, y: 0 })
-
-      // 底部提示文字 - 半透明层
-      Column() {
-        Text('短按切换 · 长按保存')
-          .fontSize(14)
-          .fontColor('#ffffff')
-          .opacity(this.hintOpacity)
-          .textAlign(TextAlign.Center)
-          .backgroundColor(`rgba(0, 0, 0, ${this.hintOpacity * 0.375})`)
-          .padding({ top: 12, bottom: 12, left: 24, right: 24 })
-          .borderRadius(12)
-          .backdropBlur(10)
-      }
-      .width('100%')
-      .padding({ left: 20, right: 20, bottom: 30, top: 20 })
-      .backgroundColor('rgba(0, 0, 0, 0)')
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-      .position({ x: 0, y: '100%' })
-      .translate({ y: '-100%' })
-      .opacity(this.hintOpacity)
-
-      // 全屏加载遮罩
-      if (this.isLoading) {
-        Stack() {
-          Column()
-            .width('100%')
-            .height('100%')
-            .backgroundColor('rgba(0, 0, 0, 0.4)')
-            .backdropBlur(10)
-
-          Column() {
-            LoadingProgress()
-              .width(50)
-              .height(50)
-              .margin({ bottom: 16 })
-
-            Text('正在生成壁纸...')
-              .fontSize(18)
-              .fontColor('#ffffff')
-          }
-          .justifyContent(FlexAlign.Center)
-          .alignItems(HorizontalAlign.Center)
-          .width(140)
-          .height(140)
-          .backgroundColor('rgba(44, 62, 80, 0.8)')
-          .borderRadius(16)
-          .backdropBlur(20)
-        }
-        .width('100%')
-        .height('100%')
-      }
-      // 隐藏的纯净壁纸组件用于截图
+      TopBarComponent()
+      HintTextComponent({ hintOpacity: this.hintOpacity })
+      LoadingOverlayComponent({ isLoading: this.isLoading })
       this.buildPureWallpaper()
     }
     .width('100%')
     .height('100%')
     .id('previewArea')
     .gesture(
-      GestureGroup(GestureMode.Exclusive,
-        // 长按手势：保存壁纸
-        LongPressGesture({ fingers: 1, repeat: false, duration: 800 })
-          .onAction(() => {
-            // 在过渡期间禁用手势响应
-            if (this.isTransitioning) {
-              return;
-            }
-            this.resetHintTimer();
-            this.showSaveDialog = true;
-          }),
-        // 短按手势：切换壁纸
-        TapGesture({ count: 1, fingers: 1 })
-          .onAction(async () => {
-            // 在加载或过渡期间禁用手势响应
-            if (this.isLoading || this.isTransitioning) {
-              return;
-            }
-            this.resetHintTimer();
-            await this.recommendNext();
-          })
-      )
+      LongPressGesture({
+        fingers: 1,
+        repeat: false,
+        duration: UI_CONSTANTS.LONG_PRESS_DURATION
+      })
+        .onAction(() => {
+          this.uiAnimationService?.resetHintTimer();
+          this.showSaveDialog = true;
+        })
     )
     .bindContentCover(this.showSaveDialog, this.buildSaveDialog(), ModalTransition.NONE)
   }
@@ -654,7 +314,6 @@ struct Index {
           .textAlign(TextAlign.Center)
           .margin({ bottom: 20 })
 
-        // 选项区域
         Column() {
           Column() {
             Row() {
@@ -775,53 +434,33 @@ struct Index {
 
   @Builder
   buildPureWallpaper() {
-    // 纯净的壁纸组件，只包含背景色和文字，用于截图保存
-    // 注意：截图组件不使用动画，始终显示完整内容
     Column() {
-      if (this.previewMode === 'recommended' && this.recommendedQuote) {
-        // 推荐模式显示推荐内容
-        Text(this.formatQuoteText(this.recommendedQuote.text))
-          .fontSize((this.recommendedWallpaper?.style.fontSize) || 24)
-          .fontColor((this.recommendedWallpaper?.style.textColor) || '#d3d3d3')
+      if (this.getCurrentQuote()) {
+        Text(this.formatQuoteText(this.getCurrentQuote()?.text || '').text)
+          .fontSize(this.optimizedFontSizes[this.currentPageIndex] || (this.getCurrentWallpaper()?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE)
+          .fontColor((this.getCurrentWallpaper()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
           .textAlign(TextAlign.Center)
           .width('100%')
-          .margin({ bottom: 40 })
-          .maxLines(20)
+          .margin({ bottom: UI_CONSTANTS.TEXT_BOTTOM_MARGIN })
+          .maxLines(UI_CONSTANTS.TEXT_LAYOUT.MAX_LINES)
           .textOverflow({ overflow: TextOverflow.None })
 
-        Text(`—— ${this.recommendedQuote.author || ''}${(this.recommendedQuote.author && this.recommendedQuote.source) ? ' · ' : ''}${this.recommendedQuote.source || ''}`)
-          .fontSize(12)
-          .fontColor((this.recommendedWallpaper?.style.textColor) || '#d3d3d3')
-          .opacity(0.8)
-          .textAlign(TextAlign.Center)
-          .width('100%')
-      } else if (this.currentQuote) {
-        // 当前模式或推荐内容不存在时显示当前内容
-        Text(this.formatQuoteText(this.currentQuote.text))
-          .fontSize((this.currentWallpaper?.style.fontSize) || 24)
-          .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
-          .textAlign(TextAlign.Center)
-          .width('100%')
-          .margin({ bottom: 40 })
-          .maxLines(20)
-          .textOverflow({ overflow: TextOverflow.None })
-
-        Text(`—— ${this.currentQuote.author || ''}${(this.currentQuote.author && this.currentQuote.source) ? ' · ' : ''}${this.currentQuote.source || ''}`)
-          .fontSize(12)
-          .fontColor((this.currentWallpaper?.style.textColor) || '#d3d3d3')
-          .opacity(0.8)
+        Text(`—— ${this.getCurrentQuote()?.author || ''}${(this.getCurrentQuote()?.author && this.getCurrentQuote()?.source) ? ' · ' : ''}${this.getCurrentQuote()?.source || ''}`)
+          .fontSize(UI_CONSTANTS.AUTHOR_FONT_SIZE)
+          .fontColor((this.getCurrentWallpaper()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+          .opacity(UI_CONSTANTS.AUTHOR_TEXT_OPACITY)
           .textAlign(TextAlign.Center)
           .width('100%')
       }
     }
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
-    .padding(24)
+    .padding(UI_CONSTANTS.CONTAINER_PADDING)
     .width('100%')
     .height('100%')
-    .backgroundColor(this.previewBackground || '#667eea')
+    .backgroundColor(this.previewBackground || UI_CONSTANTS.FALLBACK_BACKGROUND_COLOR)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .id('pureWallpaperArea')
-    .position({ x: -2000, y: 0 }) // 移到屏幕外，不可见但可以截图
+    .position({ x: UI_CONSTANTS.PURE_WALLPAPER_OFFSET_X, y: 0 })
   }
 }

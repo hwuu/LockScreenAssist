@@ -61,24 +61,35 @@ export class QuoteSelectionService {
 
   // 根据算法选择名言
   static async selectQuote(algorithm: SelectionAlgorithm): Promise<Quote> {
+    console.log('QuoteSelectionService.selectQuote 开始, algorithm:', algorithm);
+    let result: Quote;
     switch (algorithm) {
       case SelectionAlgorithm.RANDOM:
-        return QuoteSelectionService.selectRandomQuote();
-      
+        result = QuoteSelectionService.selectRandomQuote();
+        break;
+
       case SelectionAlgorithm.SEQUENTIAL:
-        return QuoteSelectionService.selectSequentialQuote();
-      
+        result = QuoteSelectionService.selectSequentialQuote();
+        break;
+
       case SelectionAlgorithm.SMART:
-        return await QuoteSelectionService.selectSmartQuote();
-      
+        result = await QuoteSelectionService.selectSmartQuote();
+        break;
+
       default:
-        return QuoteSelectionService.selectRandomQuote();
+        result = QuoteSelectionService.selectRandomQuote();
+        break;
     }
+    console.log('QuoteSelectionService.selectQuote 完成, quote:', result?.text || 'null');
+    return result;
   }
 
   // 随机选择
   private static selectRandomQuote(): Quote {
-    return QuoteData.getRandomQuote();
+    console.log('QuoteSelectionService.selectRandomQuote 开始');
+    const quote = QuoteData.getRandomQuote();
+    console.log('QuoteSelectionService.selectRandomQuote 完成, quote:', quote?.text || 'null');
+    return quote;
   }
 
   // 顺序选择
@@ -209,12 +220,23 @@ export class QuoteSelectionService {
   }
 
   // 获取推荐的名言列表
-  static async getRecommendedQuotes(count: number = 5): Promise<Quote[]> {
+  static async getRecommendedQuotes(count: number = 5, excludeQuoteTexts?: Set<string>): Promise<Quote[]> {
     const timeContext = QuoteSelectionService.getTimeContext();
     const weather = await QuoteSelectionService.getWeatherInfo();
 
     const allQuotes = QuoteData.getAllQuotes();
-    const scoredQuotes: ScoredQuote[] = allQuotes.map(quote => {
+
+    // 先过滤掉已使用的quotes
+    const availableQuotes = excludeQuoteTexts && excludeQuoteTexts.size > 0
+      ? allQuotes.filter(quote => !excludeQuoteTexts.has(quote.text))
+      : allQuotes;
+
+    // 如果过滤后的quotes不足，记录警告
+    if (availableQuotes.length < count) {
+      console.warn(`可用quotes不足，需要${count}个，只有${availableQuotes.length}个`);
+    }
+
+    const scoredQuotes: ScoredQuote[] = availableQuotes.map(quote => {
       const scoredQuote: ScoredQuote = {
         quote: quote,
         score: QuoteSelectionService.calculateQuoteScore(quote, timeContext, weather) + Math.random() * 10 // 添加随机性
@@ -236,6 +258,6 @@ export class QuoteSelectionService {
       topQuotes[j] = temp;
     }
 
-    return topQuotes.slice(0, count).map(item => item.quote);
+    return topQuotes.slice(0, Math.min(count, availableQuotes.length)).map(item => item.quote);
   }
 }
