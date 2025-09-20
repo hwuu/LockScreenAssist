@@ -130,10 +130,10 @@ struct Index {
     // 初始化自动播放服务
     this.initAutoPlayService();
 
-    // 自动开始播放
-    setTimeout(() => {
-      this.startAutoPlay();
-    }, 500);  // 延迟500ms确保界面完全加载
+    // 取消自动开始播放
+    // setTimeout(() => {
+    //   this.startAutoPlay();
+    // }, 500);  // 延迟500ms确保界面完全加载
   }
 
   /**
