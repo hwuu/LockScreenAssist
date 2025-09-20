@@ -177,6 +177,16 @@ export class HintAnimationService {
     }, 50); // 50ms延迟确保状态同步
   }
 
+  // 停止提示定时器
+  stopHintTimer(): void {
+    this.clearHintTimer();
+    this.stopBreathing();
+    if (this.debounceTimer !== -1) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = -1;
+    }
+  }
+
   // 重置提示文字定时器（带防抖）
   resetHintTimer(): void {
     // 停止呼吸效果

@@ -12,6 +12,7 @@ export struct QuoteSwiperComponent {
   @Prop wallpaperList: (GeneratedWallpaper | null)[];
   @Prop optimizedFontSizes: number[];
   @Prop contentOpacity: number;
+  @Prop swipeEnabled: boolean = true;  // 是否启用滑动
   formatQuoteText: (text: string, fontSize?: number, containerWidth?: number) => TextLayoutResult = () => ({ text: '', fontSize: 24, lines: [] });
   onScrollIndex: (index: number) => void = () => {};
   updateBackgroundForCurrentPage: (index: number) => void = () => {};
@@ -64,6 +65,7 @@ export struct QuoteSwiperComponent {
     .vertical(true)
     .loop(false)
     .cachedCount(UI_CONSTANTS.SWIPER_CACHED_COUNT)
+    .enabled(this.swipeEnabled)
     .onChange((index: number) => {
       console.log('CLAUDE_DEBUG: QuoteSwiperComponent.onChange: index:', index, 'totalCount:', this.quoteDataSource.totalCount());
       if (index >= 0 && index < this.quoteDataSource.totalCount()) {
