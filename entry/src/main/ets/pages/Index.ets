@@ -349,7 +349,7 @@ struct Index {
     // 恢复 Hint 定时器
     this.hintAnimationService?.startHintTimer();
 
-    console.log('自动播放已完全停止，速度因子已重置');
+    console.log('自动播放已完全停止，isAutoPlaying:', this.isAutoPlaying, '，速度因子已重置');
   }
 
   /**
@@ -592,25 +592,33 @@ struct Index {
       })
       HintTextComponent({ hintOpacity: this.isAutoPlaying ? 0 : this.hintOpacity })
 
+      // 透明覆盖层，专门处理长按手势
+      if (!this.isAutoPlaying) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0, 0, 0, 0)')  // 完全透明
+          .hitTestBehavior(HitTestMode.Transparent)  // 透传点击事件，但接收长按
+          .gesture(
+            LongPressGesture({
+              fingers: 1,
+              repeat: false,
+              duration: UI_CONSTANTS.LONG_PRESS_DURATION
+            })
+              .onAction(() => {
+                console.log('长按手势触发（覆盖层），isAutoPlaying:', this.isAutoPlaying);
+                this.hintAnimationService?.resetHintTimer();
+                this.showSaveDialog = true;
+              })
+          )
+      }
+
       LoadingOverlayComponent({ isLoading: this.isLoading })
       this.buildPureWallpaper()
     }
     .width('100%')
     .height('100%')
     .id('previewArea')
-    .gesture(
-      // 播放时禁用长按
-      this.isAutoPlaying ? null :
-      LongPressGesture({
-        fingers: 1,
-        repeat: false,
-        duration: UI_CONSTANTS.LONG_PRESS_DURATION
-      })
-        .onAction(() => {
-          this.hintAnimationService?.resetHintTimer();
-          this.showSaveDialog = true;
-        })
-    )
     .bindContentCover(this.showSaveDialog, this.buildSaveDialog(), ModalTransition.NONE)
   }
 
@@ -779,6 +787,8 @@ struct Index {
 
   @Builder
   buildPureWallpaper() {
+    // 为了支持截图，需要一个在屏幕内但不可见的元素
+    // 使用visibility(Visibility.Hidden)会保留渲染但不显示
     Column() {
       if (this.getCurrentQuote()) {
         Text(this.formatQuoteText(this.getCurrentQuote()?.text || '').text)
@@ -806,6 +816,8 @@ struct Index {
     .backgroundColor(this.previewBackground || UI_CONSTANTS.FALLBACK_BACKGROUND_COLOR)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .id('pureWallpaperArea')
-    .position({ x: UI_CONSTANTS.PURE_WALLPAPER_OFFSET_X, y: 0 })
+    .position({ x: 0, y: 0 })  // 保持在屏幕内以便截图
+    .visibility(Visibility.Hidden)  // 使用visibility隐藏但保留渲染
+    .hitTestBehavior(HitTestMode.None)  // 不接收触摸事件
   }
 }

@@ -5,6 +5,8 @@ import fs from '@ohos.file.fs';
 import image from '@ohos.multimedia.image';
 import common from '@ohos.app.ability.common';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
+import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { OperationResult, WallpaperApplyParams } from '../common/ServiceTypes';
 
 export class WallpaperUIService {
@@ -65,6 +67,47 @@ export class WallpaperUIService {
 
     try {
       console.log('开始应用壁纸操作...');
+
+      // 如果需要保存到相册，先请求权限
+      if (params.saveToGallery) {
+        const atManager: abilityAccessCtrl.AtManager = abilityAccessCtrl.createAtManager();
+        const permissions: Array<Permissions> = [
+          'ohos.permission.WRITE_IMAGEVIDEO',
+          'ohos.permission.READ_IMAGEVIDEO'
+        ];
+
+        try {
+          // 请求权限 - requestPermissionsFromUser会判断权限的授权状态来决定是否唤起弹窗
+          const data = await atManager.requestPermissionsFromUser(params.context, permissions);
+          console.log('权限请求结果:', data);
+
+          // 检查权限是否都被授予
+          const grantStatus: Array<number> = data.authResults;
+          const length: number = grantStatus.length;
+          let allGranted: boolean = true;
+
+          for (let i = 0; i < length; i++) {
+            if (grantStatus[i] !== 0) {
+              // 0 表示用户授权，其他值表示拒绝
+              allGranted = false;
+              console.error(`权限 ${permissions[i]} 被拒绝，状态码: ${grantStatus[i]}`);
+            }
+          }
+
+          if (!allGranted) {
+            console.error('用户拒绝了必要的权限，请到设置中手动开启');
+            const result: OperationResult = { success: false, message: '需要存储权限才能保存图片，请到设置中开启' };
+            return result;
+          }
+
+          console.log('所有权限已授权');
+        } catch (err) {
+          const error = err as BusinessError;
+          console.error(`请求权限失败. Code is ${error.code}, message is ${error.message}`);
+          const result: OperationResult = { success: false, message: '请求权限失败' };
+          return result;
+        }
+      }
 
       return new Promise((resolve) => {
         // 使用componentSnapshot API截图纯净壁纸区域
