@@ -6,6 +6,7 @@ import { ScheduleConfig, WallpaperConfig } from '../common/ScheduleConfig';
 import { ScreenInfo, CurrentWallpaperResult, AppInitResult } from '../common/ServiceTypes';
 import display from '@ohos.display';
 import common from '@ohos.app.ability.common';
+import { PreGeneratedWallpaperService } from './PreGeneratedWallpaperService';
 
 export class AppInitializationService {
   private screenWidth: number = 0;
@@ -80,11 +81,17 @@ export class AppInitializationService {
     return result;
   }
 
-  // 加载名言数据源
+  // 加载名言数据源并初始化预生成数据
   async loadQuoteSource(context?: common.UIAbilityContext): Promise<void> {
     try {
       const QuoteDataModule = await import('../common/QuoteData');
       await QuoteDataModule.QuoteData.loadQuoteSource(context);
+
+      // 初始化预生成壁纸数据
+      console.log('CLAUDE_DEBUG: 开始初始化预生成壁纸数据');
+      const allQuotes = QuoteDataModule.QuoteData.getAllQuotes();
+      await PreGeneratedWallpaperService.initialize(allQuotes);
+      console.log('CLAUDE_DEBUG: 预生成壁纸数据初始化完成');
     } catch (error) {
       console.error('CLAUDE_DEBUG: Failed to load quote source in Index:', error);
     }
@@ -110,8 +117,8 @@ export class AppInitializationService {
     console.log('CLAUDE_DEBUG: AppInitializationService 开始加载配置');
     const config = await this.loadConfig();
 
-    // 加载名言数据源
-    console.log('CLAUDE_DEBUG: AppInitializationService 开始加载名言数据源');
+    // 加载名言数据源并初始化预生成数据
+    console.log('CLAUDE_DEBUG: AppInitializationService 开始加载名言数据源和预生成数据');
     await this.loadQuoteSource(context);
 
     // 加载当前壁纸和名言
