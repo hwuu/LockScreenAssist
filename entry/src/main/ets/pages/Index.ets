@@ -12,6 +12,7 @@ import { UI_CONSTANTS } from '../common/UIConstants';
 import { TopBarComponent } from '../components/TopBarComponent';
 import { HintTextComponent } from '../components/HintTextComponent';
 import { LoadingOverlayComponent } from '../components/LoadingOverlayComponent';
+import { LinearProgressComponent } from '../components/LinearProgressComponent';
 import { QuoteSwiperComponent } from '../components/QuoteSwiperComponent';
 import { AutoPlayService, PlayState } from '../services/AutoPlayService';
 import common from '@ohos.app.ability.common';
@@ -41,6 +42,11 @@ struct Index {
   @State idleProgressPercentage: number = 0;  // IDLE进度百分比
   @State idleDuration: number = 0;  // IDLE总时长
   @State progressOpacity: number = 1;  // 进度圆圈透明度
+
+  // 线性进度条状态
+  @State linearProgressWidth: number = 0;      // 线性进度条宽度 (0-100)
+  @State linearProgressOpacity: number = 0;    // 线性进度条透明度
+  @State showLinearProgress: boolean = true;   // 是否启用线性进度条
 
   // 时间配置
   @State displayDuration: number = 8000;   // 完整显示时间（现在仅作为参考，实际根据文字长度动态计算）
@@ -165,6 +171,11 @@ struct Index {
             this.idleProgressPercentage = 0;
           }
 
+          // 独立处理线性进度条显示逻辑
+          if (this.showLinearProgress) {
+            this.updateLinearProgressForState(state);
+          }
+
           // 状态变化时触发对应动画
           switch (state) {
             case PlayState.TEXT_FADE_OUT:
@@ -213,6 +224,23 @@ struct Index {
           // 更新IDLE进度
           this.idleProgressPercentage = percentage;
           this.idleDuration = duration;
+
+          // 独立更新线性进度条
+          if (this.showLinearProgress) {
+            this.linearProgressWidth = percentage;
+
+            // 如果进度达到100%，等待1秒后开始淡出
+            if (percentage >= 100) {
+              setTimeout(() => {
+                animateTo({
+                  duration: 300,
+                  curve: Curve.EaseOut
+                }, () => {
+                  this.linearProgressOpacity = 0;
+                });
+              }, 1000);
+            }
+          }
         }
       }
     );
@@ -337,6 +365,34 @@ struct Index {
   }
 
   /**
+   * 根据播放状态更新线性进度条
+   */
+  private updateLinearProgressForState(state: PlayState): void {
+    if (state === PlayState.IDLE && this.isAutoPlaying) {
+      // IDLE状态且正在播放时，显示进度条
+      this.linearProgressWidth = 0;
+      animateTo({
+        duration: 500,
+        curve: Curve.EaseIn
+      }, () => {
+        this.linearProgressOpacity = 0.3;
+      });
+    } else if (state === PlayState.BG_FADE_IN) {
+      // 进入背景淡入时，重置进度条
+      this.linearProgressWidth = 0;
+      this.linearProgressOpacity = 0;
+    } else if (state !== PlayState.IDLE) {
+      // 其他状态时隐藏进度条
+      animateTo({
+        duration: 300,
+        curve: Curve.EaseOut
+      }, () => {
+        this.linearProgressOpacity = 0;
+      });
+    }
+  }
+
+  /**
    * 开始自动播放
    */
   async startAutoPlay() {
@@ -398,6 +454,12 @@ struct Index {
     this.currentSpeedUpFactor = 1;  // 重置速度因子
     this.idleProgressPercentage = 0;  // 重置进度
     this.autoPlayService?.stop();
+
+    // 重置线性进度条
+    if (this.showLinearProgress) {
+      this.linearProgressWidth = 0;
+      this.linearProgressOpacity = 0;
+    }
 
     // 恢复 Hint 定时器
     this.hintAnimationService?.startHintTimer();
@@ -644,6 +706,13 @@ struct Index {
         onPauseClick: (): void => this.pauseAutoPlay()
       })
       HintTextComponent({ hintOpacity: this.isAutoPlaying ? 0 : this.hintOpacity })
+
+      // 线性进度条（与hint相同位置）
+      LinearProgressComponent({
+        progressWidth: this.linearProgressWidth,
+        progressOpacity: this.linearProgressOpacity,
+        isEnabled: this.showLinearProgress
+      })
 
       // 透明覆盖层，专门处理长按手势
       if (!this.isAutoPlaying) {
