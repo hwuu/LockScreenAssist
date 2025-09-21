@@ -22,7 +22,6 @@ struct Index {
   @State currentQuote: Quote | null = null;
   @State currentWallpaper: GeneratedWallpaper | null = null;
   @State isLoading: boolean = false;
-  @State previewBackground: string = '';
   @State previewMode: 'current' | 'recommended' = 'current';
   @State recommendedQuote: Quote | null = null;
   @State recommendedWallpaper: GeneratedWallpaper | null = null;
@@ -59,12 +58,14 @@ struct Index {
   @State screenRatio: number = UI_CONSTANTS.DEFAULT_SCREEN_RATIO;
   @State screenWidth: number = 0;
   @State screenHeight: number = 0;
+  @State previewBackground: string = '#000000';  // 初始为纯黑色
   @State setLockScreen: boolean = false;
   @State saveToGallery: boolean = true;
   @State isApplying: boolean = false;
   @State hintOpacity: number = 0;
-  @State contentOpacity: number = 1;
+  @State contentOpacity: number = 0;  // 初始为0，避免闪烁
   @State isTransitioning: boolean = false;
+  @State isInitialLoad: boolean = true;  // 标记是否是初次加载
 
   @State currentPageIndex: number = 0;
   @Provide quoteDataSource: QuoteDataSource = new QuoteDataSource();
@@ -180,6 +181,19 @@ struct Index {
           switch (state) {
             case PlayState.TEXT_FADE_OUT:
               this.executeTextFadeOutAnimation();
+              // TEXT_FADE_OUT 开始时，进度条同步淡出（与文字淡出时长一致）
+              if (this.showLinearProgress && this.linearProgressOpacity > 0) {
+                const duration = this.textFadeDuration / this.currentSpeedUpFactor;
+                animateTo({
+                  duration: duration,  // 与文字淡出时长一致
+                  curve: Curve.EaseOut
+                }, () => {
+                  this.linearProgressOpacity = 0;
+                });
+              }
+              break;
+            case PlayState.TEXT_OUT_HOLD:
+              // 进度条已在TEXT_FADE_OUT时处理
               break;
             case PlayState.BG_FADE_OUT:
               this.executeBgFadeOutAnimation();
@@ -191,6 +205,7 @@ struct Index {
               this.executeTextFadeInAnimation();
               // 文字淡入时准备真正的下一页背景
               this.prepareNextBackground();
+              // TEXT_FADE_IN 开始时不再处理进度条，改为在IDLE时根据播放状态处理
               break;
           }
         },
@@ -228,18 +243,7 @@ struct Index {
           // 独立更新线性进度条
           if (this.showLinearProgress) {
             this.linearProgressWidth = percentage;
-
-            // 如果进度达到100%，等待1秒后开始淡出
-            if (percentage >= 100) {
-              setTimeout(() => {
-                animateTo({
-                  duration: 300,
-                  curve: Curve.EaseOut
-                }, () => {
-                  this.linearProgressOpacity = 0;
-                });
-              }, 1000);
-            }
+            // 进度条达到100%后保持显示，等待状态变化时再处理淡出
           }
         }
       }
@@ -279,26 +283,42 @@ struct Index {
       const currentWallpaper = this.getCurrentWallpaper();
       const newBackground = await this.wallpaperUIService?.updatePreview(currentWallpaper) || '#2c3e50';
 
-      animateTo({
-        duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
-        curve: Curve.EaseInOut
-      }, () => {
-        this.contentOpacity = 0;
-      });
-
-      setTimeout(() => {
+      if (this.isInitialLoad) {
+        // 初次加载时，直接设置背景并渐入
+        this.previewBackground = newBackground;
+        animateTo({
+          duration: UI_CONSTANTS.ANIMATION_DURATION_FADE,
+          curve: Curve.EaseInOut
+        }, () => {
+          this.contentOpacity = 1;
+        });
+        this.isInitialLoad = false;
+        setTimeout(() => {
+          this.isTransitioning = false;
+        }, UI_CONSTANTS.ANIMATION_DURATION_FADE);
+      } else {
+        // 非初次加载，执行淡出淡入动画
         animateTo({
           duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
           curve: Curve.EaseInOut
         }, () => {
-          this.previewBackground = newBackground;
-          this.contentOpacity = 1;
+          this.contentOpacity = 0;
         });
 
         setTimeout(() => {
-          this.isTransitioning = false;
+          animateTo({
+            duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
+            curve: Curve.EaseInOut
+          }, () => {
+            this.previewBackground = newBackground;
+            this.contentOpacity = 1;
+          });
+
+          setTimeout(() => {
+            this.isTransitioning = false;
+          }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
         }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
-      }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
+      }
 
       setTimeout(() => {
         console.log('Preview updated:', this.previewBackground);
@@ -368,28 +388,39 @@ struct Index {
    * 根据播放状态更新线性进度条
    */
   private updateLinearProgressForState(state: PlayState): void {
-    if (state === PlayState.IDLE && this.isAutoPlaying) {
-      // IDLE状态且正在播放时，显示进度条
-      this.linearProgressWidth = 0;
-      animateTo({
-        duration: 500,
-        curve: Curve.EaseIn
-      }, () => {
-        this.linearProgressOpacity = 0.3;
-      });
+    if (state === PlayState.IDLE) {
+      if (this.isAutoPlaying) {
+        // IDLE状态且正在自动播放
+        // 如果进度条未显示，则渐入（与文字淡入时长一致）
+        if (this.linearProgressOpacity <= 0) {
+          this.linearProgressWidth = 0;
+          const duration = this.textFadeDuration / this.currentSpeedUpFactor;
+          animateTo({
+            duration: duration,  // 与文字淡入时长一致
+            curve: Curve.EaseIn
+          }, () => {
+            this.linearProgressOpacity = 0.3;
+          });
+        }
+        // 进度条已显示，继续更新进度（通过onIdleProgress）
+      } else {
+        // IDLE状态但不在自动播放，进度条应渐出
+        if (this.linearProgressOpacity > 0) {
+          const duration = this.textFadeDuration / this.currentSpeedUpFactor;
+          animateTo({
+            duration: duration,  // 与文字淡出时长一致
+            curve: Curve.EaseOut
+          }, () => {
+            this.linearProgressOpacity = 0;
+          });
+        }
+      }
     } else if (state === PlayState.BG_FADE_IN) {
-      // 进入背景淡入时，重置进度条
+      // 进入背景淡入时，确保进度条完全透明
       this.linearProgressWidth = 0;
       this.linearProgressOpacity = 0;
-    } else if (state !== PlayState.IDLE) {
-      // 其他状态时隐藏进度条
-      animateTo({
-        duration: 300,
-        curve: Curve.EaseOut
-      }, () => {
-        this.linearProgressOpacity = 0;
-      });
     }
+    // 移除了其他状态时立即隐藏的逻辑，改为在 TEXT_FADE_OUT 时处理
   }
 
   /**

@@ -202,6 +202,8 @@ export class AutoPlayService {
     // 等待后进入文字淡出
     if (this.isRunning) {
       this.stateTimer = setTimeout(() => {
+        // 确保发送100%进度
+        this.callbacks.onIdleProgress?.(100, this.currentIdleDuration);
         this.stopIdleProgress();
         if (this.isRunning && !this.isStopping) {
           this.transitionToState(PlayState.TEXT_FADE_OUT);
@@ -225,7 +227,10 @@ export class AutoPlayService {
     // 立即发送0%进度
     this.callbacks.onIdleProgress?.(0, duration);
 
-    // 每100ms更新一次进度
+    // 根据速度因子调整更新频率，10倍速时更频繁更新
+    const updateInterval = Math.max(20, 100 / this.speedUpFactor);  // 10倍速时每20ms更新一次
+
+    // 定期更新进度
     this.idleProgressTimer = setInterval(() => {
       const elapsed = Date.now() - this.idleStartTime;
       const percentage = Math.min(elapsed / duration * 100, 100);
@@ -235,7 +240,7 @@ export class AutoPlayService {
       if (percentage >= 100) {
         this.stopIdleProgress();
       }
-    }, 100);
+    }, updateInterval);
   }
 
   /**

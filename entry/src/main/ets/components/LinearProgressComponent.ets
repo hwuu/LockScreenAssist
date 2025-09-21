@@ -14,7 +14,7 @@ export struct LinearProgressComponent {
             .width('100%')
             .height(2)
             .backgroundColor('#FFFFFF')
-            .opacity(0.1 * (this.progressOpacity / 0.3))  // 背景透明度跟随主透明度变化
+            .opacity(this.progressOpacity * 0.3)  // 背景透明度为前景的30%，保持同步淡入淡出
 
           // 进度条
           Row()
