@@ -75,11 +75,19 @@ struct Index {
     // 清理定时器和服务
     this.autoPlayService?.stop();
     this.hintAnimationService?.stopHintTimer();
+
+    // 清理全局事件处理器
+    this.unregisterBackgroundEventHandler();
+
     console.log('Index aboutToDisappear: 已清理所有定时器');
   }
 
   async aboutToAppear() {
     console.log('CLAUDE_DEBUG: Index.aboutToAppear 开始');
+
+    // 注册全局后台事件处理器
+    this.registerBackgroundEventHandler();
+
     this.appInitService = new AppInitializationService();
     this.wallpaperUIService = new WallpaperUIService();
 
@@ -280,6 +288,51 @@ struct Index {
       setTimeout(() => {
         this.isTransitioning = false;
       }, UI_CONSTANTS.ANIMATION_DURATION_FADE);
+    }
+  }
+
+  /**
+   * 注册全局后台事件处理器
+   */
+  private registerBackgroundEventHandler(): void {
+    // 创建全局事件处理器对象
+    globalThis.backgroundEventHandler = {
+      pauseAutoPlay: () => {
+        console.log('Index: 收到后台暂停播放请求');
+        if (this.isAutoPlaying && this.autoPlayService) {
+          this.pauseAutoPlay();
+        }
+      },
+      stopBreathing: () => {
+        console.log('Index: 收到后台停止呼吸灯请求');
+        this.hintAnimationService?.stopBreathing();
+        // 立即设置透明度为0
+        animateTo({
+          duration: 300,
+          curve: Curve.EaseOut
+        }, () => {
+          this.hintOpacity = 0;
+        });
+      },
+      resumeBreathing: () => {
+        console.log('Index: 收到前台恢复呼吸灯请求');
+        // 只有在不播放的情况下才恢复呼吸灯
+        if (!this.isAutoPlaying) {
+          this.hintAnimationService?.startHintTimer();
+        }
+      },
+      isAutoPlaying: () => {
+        return this.isAutoPlaying;
+      }
+    };
+  }
+
+  /**
+   * 清理全局后台事件处理器
+   */
+  private unregisterBackgroundEventHandler(): void {
+    if (globalThis.backgroundEventHandler) {
+      globalThis.backgroundEventHandler = null;
     }
   }
 

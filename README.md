@@ -176,6 +176,8 @@
 7. **HintAnimationService**：提示动画服务（呼吸灯效果）
 8. **WallpaperUIService**：壁纸UI更新服务
 9. **QuotePageService**：名言页面管理服务
+10. **PreGeneratedWallpaperService**：壁纸配置预生成服务
+11. **BackgroundLifecycleService**：后台生命周期管理服务
 
 ### 设计模式
 - **服务层架构**：清晰的分层设计
@@ -208,7 +210,9 @@ entry/src/main/ets/
 │   ├── HintAnimationService.ets  # 提示动画服务
 │   ├── WallpaperUIService.ets    # 壁纸UI更新服务
 │   ├── QuotePageService.ets      # 名言页面管理服务
-│   └── AppInitializationService.ets # 应用初始化服务
+│   ├── AppInitializationService.ets # 应用初始化服务
+│   ├── PreGeneratedWallpaperService.ets # 壁纸预生成服务
+│   └── BackgroundLifecycleService.ets # 后台生命周期管理
 ├── components/               # UI组件
 │   ├── TopBarComponent.ets  # 顶部工具栏组件（包含设置和播放按钮）
 │   ├── QuoteSwiperComponent.ets # 名言滑动组件
@@ -220,8 +224,10 @@ entry/src/main/ets/
 │   └── Settings.ets          # 设置页面
 ├── entryability/             # 应用能力
 │   └── EntryAbility.ets      # 应用生命周期管理
-└── entrybackupability/       # 备份能力
-    └── EntryBackupAbility.ets # 数据备份恢复
+├── entrybackupability/       # 备份能力
+│   └── EntryBackupAbility.ets # 数据备份恢复
+└── types/                     # 类型定义
+    └── global.d.ts           # 全局类型定义
 ```
 
 ### 构建配置
@@ -300,7 +306,18 @@ A:
 
 ## 版本历史
 
-### v2.1.0 (当前版本) - 2025年1月
+### v2.2.0 (当前版本) - 2025年1月
+- ✅ **性能优化**：实现100个壁纸配置预生成，启动时一次性计算完成
+- ✅ **后台管理**：应用进入后台自动处理
+  - 立即停止呼吸灯动画
+  - 10秒后自动暂停播放（如果正在播放）
+  - 返回前台智能恢复呼吸灯（仅在非播放状态）
+- ✅ **架构改进**：
+  - 新增 `PreGeneratedWallpaperService` 预生成服务
+  - 新增 `BackgroundLifecycleService` 后台生命周期管理
+  - 优化全局事件通信机制
+
+### v2.1.0 - 2025年1月
 - ✅ 根据文字长度动态调整播放时长
 - ✅ 进度圈圈显示播放进度，与背景动画同步淡入淡出
 - ✅ 修复保存图片功能，添加运行时权限请求
