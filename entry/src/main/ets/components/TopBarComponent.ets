@@ -60,7 +60,6 @@ export struct TopBarComponent {
         Text('⋯')
           .fontSize(16)
           .fontColor(UI_CONSTANTS.WHITE_COLOR)
-          .fontFamily('Times New Roman')
       }
       .width(UI_CONSTANTS.BUTTON_SIZE)
       .height(UI_CONSTANTS.BUTTON_SIZE)
