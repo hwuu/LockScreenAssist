@@ -3,31 +3,41 @@
     "text": "战争的伟力之最深厚的根源，存在于民众之中。",
     "author": "毛泽东",
     "category": "战争",
-    "source": "《论持久战》"
+    "source": "《论持久战》",
+    "bg_color": "#7f1d1d",
+    "bg_color_reason": "深红色体现革命战争的坚定与力量"
   },
   {
     "text": "兵民是胜利之本。",
     "author": "毛泽东",
     "category": "战争",
-    "source": "《论持久战》"
+    "source": "《论持久战》",
+    "bg_color": "#991b1b",
+    "bg_color_reason": "酒红色表达军民一心的团结力量"
   },
   {
     "text": "武器是战争的重要的因素，但不是决定的因素，决定的因素是人不是物。",
     "author": "毛泽东",
     "category": "战争",
-    "source": "《论持久战》"
+    "source": "《论持久战》",
+    "bg_color": "#b91c1c",
+    "bg_color_reason": "猩红色强调人的因素在战争中的决定性"
   },
   {
     "text": "战略上要藐视敌人，战术上要重视敌人。",
     "author": "毛泽东",
     "category": "战略",
-    "source": "《论持久战》"
+    "source": "《论持久战》",
+    "bg_color": "#374151",
+    "bg_color_reason": "中灰蓝色体现战略思维的理性与深度"
   },
   {
     "text": "敌进我退，敌驻我扰，敌疲我打，敌退我追。",
     "author": "毛泽东",
     "category": "战略",
-    "source": "《中国革命战争的战略问题》"
+    "source": "《中国革命战争的战略问题》",
+    "bg_color": "#dc2626",
+    "bg_color_reason": "正红色强调游击战术的灵活性与主动性"
   },
   {
     "text": "打得赢就打，打不赢就走。",

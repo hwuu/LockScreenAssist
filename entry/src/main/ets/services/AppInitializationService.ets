@@ -2,7 +2,7 @@
 import { Quote } from '../common/QuoteData';
 import { QuoteSelectionService } from './QuoteSelectionService';
 import { CardService, Card } from './CardService';
-import { ScheduleConfig, WallpaperConfig } from '../common/ScheduleConfig';
+import { ScheduleConfig, CardConfig } from '../common/ScheduleConfig';
 import { ScreenInfo, CurrentCardResult, AppInitResult } from '../common/ServiceTypes';
 import display from '@ohos.display';
 import common from '@ohos.app.ability.common';
@@ -43,7 +43,7 @@ export class AppInitializationService {
   }
 
   // 加载应用配置
-  async loadConfig(): Promise<WallpaperConfig | null> {
+  async loadConfig(): Promise<CardConfig | null> {
     try {
       const config = await ScheduleConfig.getConfig();
       return config;
@@ -54,7 +54,7 @@ export class AppInitializationService {
   }
 
   // 加载当前卡片
-  async loadCurrentCard(config?: WallpaperConfig | null): Promise<CurrentCardResult> {
+  async loadCurrentCard(config?: CardConfig | null): Promise<CurrentCardResult> {
     const currentCard = await CardService.getCurrentCard();
     let currentQuote: Quote | null = null;
 
@@ -102,15 +102,13 @@ export class AppInitializationService {
     // 加载名言数据源
     await this.loadQuoteSource(context);
 
-    // 加载当前卡片和名言
+    // 加载当前卡片
     const cardResult = await this.loadCurrentCard(config);
-    const currentQuote = cardResult.quote;
     const currentCard = cardResult.card;
 
     const result: AppInitResult = {
       screenInfo,
       config,
-      currentQuote,
       currentCard
     };
     return result;

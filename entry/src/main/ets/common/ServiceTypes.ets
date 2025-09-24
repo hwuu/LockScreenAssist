@@ -1,14 +1,15 @@
 // 服务类型定义
 import { Quote } from './QuoteData';
 import { Card } from '../services/CardService';
-import { WallpaperConfig } from './ScheduleConfig';
-import { QuoteDataSource } from './QuoteDataSource';
+import { CardConfig } from './ScheduleConfig';
+import { CardViewerDataSource } from './CardViewerDataSource';
 import common from '@ohos.app.ability.common';
 
 // 数据统计信息接口
 export interface DataStats {
   shijingCount: number;
   maozedongCount: number;
+  tangshiCount?: number;
   totalCount: number;
 }
 
@@ -114,14 +115,12 @@ export interface CurrentCardResult {
 // 应用初始化结果接口
 export interface AppInitResult {
   screenInfo: ScreenInfo;
-  config: WallpaperConfig | null;
-  currentQuote: Quote | null;
+  config: CardConfig | null;
   currentCard: Card | null;
 }
 
 // 名言列表初始化结果接口
 export interface QuoteListInitResult {
-  quote: Quote | null;
   card: Card | null;
 }
 
@@ -133,20 +132,11 @@ export interface OperationResult {
 
 // 名言列表初始化参数接口
 export interface QuoteListInitParams {
-  currentQuote: Quote | null;
   currentCard: Card | null;
-  quoteDataSource: QuoteDataSource;
-  cardList: (Card | null)[];
+  cardViewerDataSource: CardViewerDataSource;
   optimizedFontSizes: number[];
 }
 
-// 按需加载参数接口
-export interface LoadMoreParams {
-  currentIndex: number;
-  quoteDataSource: QuoteDataSource;
-  cardList: (Card | null)[];
-  optimizedFontSizes: number[];
-}
 
 // 卡片应用参数接口
 export interface CardApplyParams {
@@ -157,8 +147,7 @@ export interface CardApplyParams {
 
 // 处理名言参数接口
 export interface ProcessQuoteParams {
-  quoteDataSource: QuoteDataSource;
-  cardList: (Card | null)[];
+  cardViewerDataSource: CardViewerDataSource;
   optimizedFontSizes: number[];
 }
 

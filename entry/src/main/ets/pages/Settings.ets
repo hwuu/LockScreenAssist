@@ -1,4 +1,4 @@
-import { ScheduleConfig, WallpaperConfig, SelectionAlgorithm } from '../common/ScheduleConfig';
+import { ScheduleConfig, CardConfig, SelectionAlgorithm } from '../common/ScheduleConfig';
 import { QuoteData, QuoteSource } from '../common/QuoteData';
 import { router, promptAction } from '@kit.ArkUI';
 import common from '@ohos.app.ability.common';
@@ -44,11 +44,11 @@ interface SheetOption {
 @Entry
 @Component
 struct Settings {
-  @State config: WallpaperConfig = {
+  @State config: CardConfig = {
     selectionAlgorithm: SelectionAlgorithm.SMART,
     autoOptimizeFont: true,
     autoOptimizeBackground: true,
-    enableSeasonalAdjustment: true,
+    enableSeasonalAdjustment: false,
     enableWeatherAdjustment: false
   };
 
@@ -59,7 +59,7 @@ struct Settings {
   @State hasChanges: boolean = false;
 
   // 保存原始配置用于比较
-  private originalConfig: WallpaperConfig = {
+  private originalConfig: CardConfig = {
     selectionAlgorithm: SelectionAlgorithm.SMART,
     autoOptimizeFont: true,
     autoOptimizeBackground: true,
@@ -173,6 +173,11 @@ struct Settings {
         AppStorage.setOrCreate('quoteSourceChanged', true);
         console.log('设置页面：名言来源已变化，设置标记为true');
       }
+
+      // 应用成功后直接返回主界面
+      setTimeout(() => {
+        router.back();
+      }, 500); // 短暂延迟让用户看到提示信息
     } catch (error) {
       console.error('Failed to apply changes:', error);
       promptAction.showToast({
@@ -194,87 +199,13 @@ struct Settings {
             type: SettingType.RADIO,
             value: this.currentQuoteSource,
             options: [
+              { label: '毛选摘抄', value: QuoteSource.MAOZEDONG } as OptionItem,
               { label: '诗经精选', value: QuoteSource.SHIJING } as OptionItem,
-              { label: '毛选摘抄', value: QuoteSource.MAOZEDONG } as OptionItem
+              { label: '唐诗三百首', value: QuoteSource.TANGSHI } as OptionItem
             ],
             onChangeString: (value: string) => {
               this.currentQuoteSource = value as QuoteSource;
               this.updateSettingValue('quote_source', value);
-              this.checkForChanges();
-            }
-          },
-          {
-            id: 'selection_algorithm',
-            title: '选择算法',
-            description: '名言展示的算法策略',
-            type: SettingType.RADIO,
-            value: this.config.selectionAlgorithm,
-            options: [
-              { label: '智能推荐', value: SelectionAlgorithm.SMART } as OptionItem,
-              { label: '随机选择', value: SelectionAlgorithm.RANDOM } as OptionItem,
-              { label: '顺序选择', value: SelectionAlgorithm.SEQUENTIAL } as OptionItem
-            ],
-            onChangeString: (value: string) => {
-              this.config.selectionAlgorithm = value as SelectionAlgorithm;
-              this.updateSettingValue('selection_algorithm', value);
-              this.checkForChanges();
-            }
-          }
-        ]
-      },
-      {
-        title: '显示优化',
-        items: [
-          {
-            id: 'auto_font',
-            title: '自动字体优化',
-            description: '根据文本长度自动调整字体大小',
-            type: SettingType.TOGGLE,
-            value: this.config.autoOptimizeFont,
-            onChangeBoolean: (value: boolean) => {
-              this.config.autoOptimizeFont = value;
-              this.updateSettingValue('auto_font', value);
-              this.checkForChanges();
-            }
-          },
-          {
-            id: 'auto_background',
-            title: '自动背景优化',
-            description: '根据内容智能选择背景颜色',
-            type: SettingType.TOGGLE,
-            value: this.config.autoOptimizeBackground,
-            onChangeBoolean: (value: boolean) => {
-              this.config.autoOptimizeBackground = value;
-              this.updateSettingValue('auto_background', value);
-              this.checkForChanges();
-            }
-          }
-        ]
-      },
-      {
-        title: '环境适应',
-        items: [
-          {
-            id: 'seasonal',
-            title: '季节调整',
-            description: '根据当前季节调整配色方案',
-            type: SettingType.TOGGLE,
-            value: this.config.enableSeasonalAdjustment,
-            onChangeBoolean: (value: boolean) => {
-              this.config.enableSeasonalAdjustment = value;
-              this.updateSettingValue('seasonal', value);
-              this.checkForChanges();
-            }
-          },
-          {
-            id: 'weather',
-            title: '天气调整',
-            description: '根据天气情况调整显示效果',
-            type: SettingType.TOGGLE,
-            value: this.config.enableWeatherAdjustment,
-            onChangeBoolean: (value: boolean) => {
-              this.config.enableWeatherAdjustment = value;
-              this.updateSettingValue('weather', value);
               this.checkForChanges();
             }
           }

@@ -9,11 +9,14 @@ export interface Quote {
   author?: string;
   category: string;
   source?: string;
+  bg_color?: string;        // 建议的背景颜色
+  bg_color_reason?: string; // 选择该颜色的理由
 }
 
 export enum QuoteSource {
   SHIJING = 'shijing',
-  MAOZEDONG = 'maozedong'
+  MAOZEDONG = 'maozedong',
+  TANGSHI = 'tangshi'
 }
 
 export class QuoteData {

@@ -1,40 +1,38 @@
-// 名言滑动组件
-import { Quote } from '../common/QuoteData';
+// 卡片查看器组件
 import { Card } from '../services/CardService';
-import { QuoteDataSource } from '../common/QuoteDataSource';
+import { CardViewerDataSource } from '../common/CardViewerDataSource';
 import { TextLayoutResult } from '../common/TextLayoutTypes';
 import { UI_CONSTANTS } from '../common/UIConstants';
 
 @Component
-export struct QuoteSwiperComponent {
-  @Link currentPageIndex: number;
-  @Consume quoteDataSource: QuoteDataSource;
-  @Link cardList: (Card | null)[];
+export struct CardViewerComponent {
+  @Link currentCardIndex: number;
+  @Consume cardViewerDataSource: CardViewerDataSource;
   @Link optimizedFontSizes: number[];
   @Prop contentOpacity: number;
   @Prop swipeEnabled: boolean = true;  // 是否启用滑动
   formatQuoteText: (text: string, fontSize?: number, containerWidth?: number) => TextLayoutResult = () => ({ text: '', fontSize: 24, lines: [] });
   onScrollIndex: (index: number) => void = () => {};
-  updateBackgroundForCurrentPage: (index: number) => void = () => {};
+  updateBackgroundForCurrentCard: (index: number) => void = () => {};
   resetHintTimer: () => void = () => {};
 
 
   build() {
     Swiper() {
-      LazyForEach(this.quoteDataSource, (quote: Quote, index: number) => {
+      LazyForEach(this.cardViewerDataSource, (card: Card, index: number) => {
         Column() {
-          Text(this.formatQuoteText(quote.text).text)
-            .fontSize(this.optimizedFontSizes[index] || (this.cardList[index]?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE)
-            .fontColor((this.cardList[index]?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+          Text(this.formatQuoteText(card.quote.text).text)
+            .fontSize(this.optimizedFontSizes[index] || card.style.fontSize || UI_CONSTANTS.DEFAULT_FONT_SIZE)
+            .fontColor(card.style.textColor || UI_CONSTANTS.TEXT_GRAY_COLOR)
             .textAlign(TextAlign.Center)
             .width('100%')
             .margin({ bottom: UI_CONSTANTS.TEXT_BOTTOM_MARGIN })
             .maxLines(UI_CONSTANTS.TEXT_LAYOUT.MAX_LINES)
             .textOverflow({ overflow: TextOverflow.None })
 
-          Text(`—— ${quote.author || ''}${(quote.author && quote.source) ? ' · ' : ''}${quote.source || ''}`)
+          Text(`—— ${card.quote.author || ''}${(card.quote.author && card.quote.source) ? ' · ' : ''}${card.quote.source || ''}`)
             .fontSize(UI_CONSTANTS.AUTHOR_FONT_SIZE)
-            .fontColor((this.cardList[index]?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+            .fontColor(card.style.textColor || UI_CONSTANTS.TEXT_GRAY_COLOR)
             .opacity(UI_CONSTANTS.AUTHOR_TEXT_OPACITY)
             .textAlign(TextAlign.Center)
             .width('100%')
@@ -44,9 +42,9 @@ export struct QuoteSwiperComponent {
         .padding(UI_CONSTANTS.CONTAINER_PADDING)
         .width('100%')
         .height('100%')
-      }, (quote: Quote, index: number) => `${quote.text}-${index}`)
+      }, (card: Card, index: number) => `${card.quote.text}-${index}`)
     }
-    .index(this.currentPageIndex)
+    .index(this.currentCardIndex)
     .width('100%')
     .height('100%')
     .indicator(false)
@@ -55,9 +53,9 @@ export struct QuoteSwiperComponent {
     .cachedCount(UI_CONSTANTS.SWIPER_CACHED_COUNT)
     .enabled(this.swipeEnabled)
     .onChange((index: number) => {
-      if (index >= 0 && index < this.quoteDataSource.totalCount()) {
+      if (index >= 0 && index < this.cardViewerDataSource.totalCount()) {
         this.onScrollIndex(index);
-        this.updateBackgroundForCurrentPage(index);
+        this.updateBackgroundForCurrentCard(index);
         this.resetHintTimer();
       }
     })
@@ -68,7 +66,7 @@ export struct QuoteSwiperComponent {
       if (targetIndex < 0) {
         return;
       }
-      if (targetIndex >= this.quoteDataSource.totalCount()) {
+      if (targetIndex >= this.cardViewerDataSource.totalCount()) {
         return;
       }
     })

@@ -182,12 +182,12 @@ export class AutoPlayService {
 
       let dynamicDuration: number;
       if (textLength <= 10) {
-        dynamicDuration = 5000;  // 5秒
+        dynamicDuration = 8000;  // 8秒
       } else {
-        // 5秒 + (字数-10) * 0.2秒
-        dynamicDuration = 5000 + (textLength - 10) * 200;
+        // 8秒 + (字数-10) * 0.3秒
+        dynamicDuration = 8000 + (textLength - 10) * 300;
         // 最多30秒
-        dynamicDuration = Math.min(dynamicDuration, 30000);
+        dynamicDuration = Math.min(dynamicDuration, 45000);
       }
 
       // 应用速度因子

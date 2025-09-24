@@ -1,11 +1,10 @@
-import { Quote, QuoteData } from '../common/QuoteData';
+import { Quote } from '../common/QuoteData';
 import { CardService, Card } from '../services/CardService';
-import { WallpaperConfig } from '../common/ScheduleConfig';
+import { CardConfig } from '../common/ScheduleConfig';
 import router from '@ohos.router';
-import { QuoteDataSource } from '../common/QuoteDataSource';
+import { CardViewerDataSource } from '../common/CardViewerDataSource';
 import { AppInitializationService } from '../services/AppInitializationService';
-import { QuotePageService } from '../services/QuotePageService';
-import { CardUIService } from '../services/CardUIService';
+// CardPageService 和 CardUIService 功能已合并到 CardService
 import { HintAnimationService } from '../services/HintAnimationService';
 import { TextLayoutResult } from '../common/TextLayoutTypes';
 import { UI_CONSTANTS } from '../common/UIConstants';
@@ -13,18 +12,16 @@ import { TopBarComponent } from '../components/TopBarComponent';
 import { HintTextComponent } from '../components/HintTextComponent';
 import { LoadingOverlayComponent } from '../components/LoadingOverlayComponent';
 import { LinearProgressComponent } from '../components/LinearProgressComponent';
-import { QuoteSwiperComponent } from '../components/QuoteSwiperComponent';
+import { CardViewerComponent } from '../components/CardViewerComponent';
 import { AutoPlayService, PlayState } from '../services/AutoPlayService';
 import common from '@ohos.app.ability.common';
 @Entry
 @Component
 struct Index {
-  @State currentQuote: Quote | null = null;
   @State currentCard: Card | null = null;
   @State isLoading: boolean = false;
   @StorageLink('quoteSourceChanged') @Watch('onQuoteSourceChanged') quoteSourceChanged: boolean = false;
   @State previewMode: 'current' | 'recommended' = 'current';
-  @State recommendedQuote: Quote | null = null;
   @State recommendedCard: Card | null = null;
   @State usedRecommendations: Set<string> = new Set();
 
@@ -54,7 +51,7 @@ struct Index {
   @State bgFadeDuration: number = 500;     // 背景淡入淡出时间
   @State holdDuration: number = 250;       // 保持时间
 
-  @State config: WallpaperConfig | null = null;
+  @State config: CardConfig | null = null;
   @State showSaveDialog: boolean = false;
   @State screenRatio: number = UI_CONSTANTS.DEFAULT_SCREEN_RATIO;
   @State screenWidth: number = 0;
@@ -68,13 +65,12 @@ struct Index {
   @State isTransitioning: boolean = false;
   @State isInitialLoad: boolean = true;  // 标记是否是初次加载
 
-  @State currentPageIndex: number = 0;
-  @Provide quoteDataSource: QuoteDataSource = new QuoteDataSource();
-  @State cardList: (Card | null)[] = [];
+  @State currentCardIndex: number = 0;
+  @Provide cardViewerDataSource: CardViewerDataSource = new CardViewerDataSource();
   @State optimizedFontSizes: number[] = [];
 
   private appInitService: AppInitializationService | null = null;
-  private quotePageService: QuotePageService | null = null;
+  // CardPageService 功能已集成到 CardService
   private hintAnimationService: HintAnimationService | null = null;
   private autoPlayService: AutoPlayService | null = null;
 
@@ -140,51 +136,42 @@ struct Index {
       // 清理现有的名言数据
       // 重要：不要创建新实例，而是清空现有数据源
       // 否则Swiper组件可能仍然绑定到旧实例
-      this.quoteDataSource.clear();
-      this.cardList = [];
+      this.cardViewerDataSource.clear();
       this.optimizedFontSizes = [];
 
-      // 重要：清理QuotePageService中的已使用名言缓存
+      // 重要：清理CardService中的已使用名言缓存
       // 否则新源的名言可能因为文本相同而被错误地排除
-      if (this.quotePageService) {
-        this.quotePageService.clearUsedQuoteTexts();
-      }
+      CardService.clearUsedQuoteTexts();
       console.log('已清理现有名言数据和缓存');
 
       // 重新初始化应用（与aboutToAppear的逻辑相同）
       const context = getContext(this) as common.UIAbilityContext;
-      console.log('重新加载前的名言来源:', QuoteData.getQuoteSource());
       const initResult = await this.appInitService?.initializeApp(context);
-      console.log('重新加载后的名言来源:', QuoteData.getQuoteSource());
 
       if (initResult) {
         // 更新状态
         this.config = initResult.config;
-        this.currentQuote = initResult.currentQuote;
         this.currentCard = initResult.currentCard;
 
-        console.log('重新加载后的名言:', this.currentQuote?.text || 'null');
+        console.log('重新加载后的名言:', this.currentCard?.quote?.text || 'null');
 
         // 重新初始化名言列表
-        const quoteResult = await this.quotePageService?.initializeQuoteList({
-          currentQuote: this.currentQuote,
+        const quoteResult = await CardService.initializeQuoteList({
           currentCard: this.currentCard,
-          quoteDataSource: this.quoteDataSource,
-          cardList: this.cardList,
+          cardViewerDataSource: this.cardViewerDataSource,
           optimizedFontSizes: this.optimizedFontSizes
         });
 
         if (quoteResult) {
-          this.currentQuote = quoteResult.quote;
           this.currentCard = quoteResult.card;
         }
 
         // 重置到第一页
-        this.currentPageIndex = 0;
+        this.currentCardIndex = 0;
 
         // 更新预览
         await this.updatePreview();
-        await this.updateBackgroundForCurrentPage(this.currentPageIndex);
+        await this.updateBackgroundForCurrentCard(this.currentCardIndex);
 
         console.log('名言重新加载完成');
       }
@@ -221,25 +208,29 @@ struct Index {
     this.screenHeight = initResult.screenInfo.height;
     this.screenRatio = initResult.screenInfo.ratio;
     this.config = initResult.config;
-    this.currentQuote = initResult.currentQuote;
     this.currentCard = initResult.currentCard;
 
+    // 开始加载 card list 时显示加载图标
+    this.isLoading = true;
 
-    this.quotePageService = new QuotePageService(this.screenWidth, this.screenHeight);
-    const quoteResult = await this.quotePageService.initializeQuoteList({
-      currentQuote: this.currentQuote,
-      currentCard: this.currentCard,
-      quoteDataSource: this.quoteDataSource,
-      cardList: this.cardList,
-      optimizedFontSizes: this.optimizedFontSizes
-    });
+    try {
+      // 初始化 CardService 的页面服务功能
+      CardService.initPageService(this.screenWidth, this.screenHeight);
+      const quoteResult = await CardService.initializeQuoteList({
+        currentCard: this.currentCard,
+        cardViewerDataSource: this.cardViewerDataSource,
+        optimizedFontSizes: this.optimizedFontSizes
+      });
 
-    this.currentQuote = quoteResult.quote;
-    this.currentCard = quoteResult.card;
+      this.currentCard = quoteResult.card;
 
-    await this.updatePreview();
-    await this.updateBackgroundForCurrentPage(this.currentPageIndex);
-    this.hintAnimationService?.startHintTimer();
+      await this.updatePreview();
+      await this.updateBackgroundForCurrentCard(this.currentCardIndex);
+      this.hintAnimationService?.startHintTimer();
+    } finally {
+      // 加载完成后隐藏加载图标
+      this.isLoading = false;
+    }
 
     // 初始化自动播放服务
     this.initAutoPlayService();
@@ -325,7 +316,7 @@ struct Index {
           // 停止完成，调用完成停止流程
           this.completeStopping();
         },
-        getCurrentTextLength: () => {
+        getCurrentTextLength: (): number => {
           // 获取当前显示的名言文字长度
           const currentQuote = this.getCurrentQuote();
           if (currentQuote?.text) {
@@ -334,7 +325,7 @@ struct Index {
           }
           return 0;
         },
-        onIdleProgress: (percentage: number, duration: number) => {
+        onIdleProgress: (percentage: number, duration: number): void => {
           // 更新IDLE进度
           this.idleProgressPercentage = percentage;
           this.idleDuration = duration;
@@ -356,16 +347,14 @@ struct Index {
 
 
   getCurrentQuote(): Quote | null {
-    const totalCount = this.quoteDataSource.totalCount();
-    if (totalCount > this.currentPageIndex) {
-      return this.quoteDataSource.getData(this.currentPageIndex);
-    }
-    return this.currentQuote;
+    const currentCard = this.getCurrentCard();
+    return currentCard?.quote || null;
   }
 
   getCurrentCard(): Card | null {
-    if (this.cardList.length > this.currentPageIndex) {
-      return this.cardList[this.currentPageIndex];
+    const totalCount = this.cardViewerDataSource.totalCount();
+    if (totalCount > this.currentCardIndex) {
+      return this.cardViewerDataSource.getData(this.currentCardIndex);
     }
     return this.currentCard;
   }
@@ -376,8 +365,8 @@ struct Index {
       this.isTransitioning = true;
 
       const currentCard = this.getCurrentCard();
-      console.log(`updatePreview - currentPageIndex: ${this.currentPageIndex}, card:`, currentCard?.quote?.text, currentCard?.style?.fontSize);
-      const newBackground = CardUIService.getCardBackgroundColor(currentCard);
+      console.log(`updatePreview - currentCardIndex: ${this.currentCardIndex}, card:`, currentCard?.quote?.text, currentCard?.style?.fontSize);
+      const newBackground = CardService.getCardBackgroundColor(currentCard);
 
       if (this.isInitialLoad) {
         // 初次加载时，直接设置背景并渐入
@@ -523,7 +512,7 @@ struct Index {
    * 开始自动播放
    */
   async startAutoPlay() {
-    if (this.quoteDataSource.totalCount() <= 1) {
+    if (this.cardViewerDataSource.totalCount() <= 1) {
       console.log('只有一页，无法自动播放');
       return;
     }
@@ -657,7 +646,7 @@ struct Index {
 
     const duration = this.textFadeDuration / this.currentSpeedUpFactor;
     console.log(`执行文字淡入动画，时长: ${duration}ms (${this.currentSpeedUpFactor}倍速)`);
-    console.log('当前页索引:', this.currentPageIndex);
+    console.log('当前页索引:', this.currentCardIndex);
     animateTo({
       duration: duration,
       curve: Curve.EaseIn
@@ -670,20 +659,20 @@ struct Index {
    * 自动切换到下一页
    */
   private async autoPlayNext() {
-    const totalCount = this.quoteDataSource.totalCount();
+    const totalCount = this.cardViewerDataSource.totalCount();
     if (totalCount <= 1) return;
 
-    let nextIndex = this.currentPageIndex + 1;
+    let nextIndex = this.currentCardIndex + 1;
 
     // 到达最后一页时循环到第一页
     if (nextIndex >= totalCount) {
       nextIndex = 0;
     }
 
-    console.log(`自动切换: ${this.currentPageIndex} -> ${nextIndex}`);
+    console.log(`自动切换: ${this.currentCardIndex} -> ${nextIndex}`);
 
     // 切换页面
-    this.currentPageIndex = nextIndex;
+    this.currentCardIndex = nextIndex;
 
     // 交换背景：下一页变成当前页，当前页变成上一页
     const tempBackground = this.currentBackground;
@@ -700,15 +689,15 @@ struct Index {
    * 准备下一页的背景
    */
   private async prepareNextBackground() {
-    const totalCount = this.quoteDataSource.totalCount();
-    const nextIndex = (this.currentPageIndex + 1) % totalCount;
+    const totalCount = this.cardViewerDataSource.totalCount();
+    const nextIndex = (this.currentCardIndex + 1) % totalCount;
 
     console.log(`准备下一页背景，nextIndex: ${nextIndex}, totalCount: ${totalCount}`);
 
-    const nextCard = this.cardList[nextIndex];
+    const nextCard: Card | null = this.cardViewerDataSource.getData(nextIndex);
     if (nextCard) {
-      // 使用 CardUIService 获取正确格式的背景
-      this.nextBackground = CardUIService.getCardBackgroundColor(nextCard);
+      // 使用 CardService 获取正确格式的背景
+      this.nextBackground = CardService.getCardBackgroundColor(nextCard);
       console.log(`下一页背景准备完成: ${this.nextBackground}`);
     } else {
       this.nextBackground = UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
@@ -717,24 +706,17 @@ struct Index {
   }
 
   onScrollIndex(firstIndex: number) {
-    this.currentPageIndex = firstIndex;
-    this.loadMoreIfNeeded(firstIndex);
+    this.currentCardIndex = firstIndex;
   }
 
-  async loadMoreIfNeeded(currentIndex: number) {
-    if (this.quotePageService) {
-      await this.quotePageService.loadMoreIfNeeded({
-        currentIndex: currentIndex,
-        quoteDataSource: this.quoteDataSource,
-        cardList: this.cardList,
-        optimizedFontSizes: this.optimizedFontSizes
-      });
-    }
-  }
 
-  async updateBackgroundForCurrentPage(index: number) {
+  // 更新指定卡片的背景（滑动时调用）
+  async updateBackgroundForCurrentCard(index: number) {
     try {
-      const newBackground = CardUIService.getBackgroundColorForPage(index, this.cardList);
+      const card: Card | null = this.cardViewerDataSource.getData(index);
+      const newBackground = CardService.getCardBackgroundColor(card);
+
+      // 滑动切换时的简单背景更新，不需要淡出淡入
       animateTo({
         duration: 300,
         curve: Curve.EaseInOut
@@ -742,9 +724,9 @@ struct Index {
         this.previewBackground = newBackground;
       });
 
-      console.log('Background updated for page:', index, newBackground);
+      console.log('Background updated for card:', index, newBackground);
     } catch (error) {
-      console.error('Failed to update background for current page:', error);
+      console.error('Failed to update background for card:', error);
     }
   }
 
@@ -759,7 +741,7 @@ struct Index {
 
     try {
       const context = getContext(this) as common.UIAbilityContext;
-      const result = await CardUIService.exportCard({
+      const result = await CardService.exportCard({
         setAsLockScreen: this.setLockScreen,
         saveToGallery: this.saveToGallery,
         context: context
@@ -784,15 +766,7 @@ struct Index {
    * @returns 格式化后的文本布局结果
    */
   formatQuoteText(text: string, fontSize?: number, containerWidth?: number): TextLayoutResult {
-    if (this.quotePageService) {
-      return this.quotePageService.formatQuoteText(text, fontSize, containerWidth);
-    }
-
-    return {
-      text: text,
-      fontSize: fontSize || 24,
-      lines: [text]
-    };
+    return CardService.formatQuoteText(text, fontSize, containerWidth);
   }
 
 
@@ -803,14 +777,13 @@ struct Index {
 
       // 内容层（使用文字透明度控制）
       Column() {
-        QuoteSwiperComponent({
-          currentPageIndex: $currentPageIndex,
-          cardList: $cardList,
+        CardViewerComponent({
+          currentCardIndex: $currentCardIndex,
           optimizedFontSizes: $optimizedFontSizes,
           contentOpacity: this.isAutoPlaying ? this.textOpacity : this.contentOpacity,
           formatQuoteText: this.formatQuoteText.bind(this),
           onScrollIndex: this.onScrollIndex.bind(this),
-          updateBackgroundForCurrentPage: this.updateBackgroundForCurrentPage.bind(this),
+          updateBackgroundForCurrentCard: this.updateBackgroundForCurrentCard.bind(this),
           resetHintTimer: () => this.hintAnimationService?.resetHintTimer(),
           swipeEnabled: !this.isAutoPlaying  // 播放时禁用滑动
         })
@@ -857,7 +830,7 @@ struct Index {
       }
 
       LoadingOverlayComponent({ isLoading: this.isLoading })
-      this.buildPureCard()
+      this.buildExportableCard()
     }
     .width('100%')
     .height('100%')
@@ -1029,14 +1002,15 @@ struct Index {
   }
 
   @Builder
-  buildPureCard() {
+  // 构建可导出的卡片视图（用于截图）
+  buildExportableCard() {
     // 为了支持截图，需要一个在屏幕内但不可见的元素
     // 使用visibility(Visibility.Hidden)会保留渲染但不显示
     Column() {
       if (this.getCurrentQuote()) {
         Text(this.formatQuoteText(this.getCurrentQuote()?.text || '').text)
-          .fontSize(this.optimizedFontSizes[this.currentPageIndex] || (this.getCurrentCard()?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE)
-          .fontColor((this.getCurrentCard()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+          .fontSize(this.optimizedFontSizes[this.currentCardIndex] || this.getCurrentCard()?.style.fontSize || UI_CONSTANTS.DEFAULT_FONT_SIZE)
+          .fontColor(this.getCurrentCard()?.style.textColor || UI_CONSTANTS.TEXT_GRAY_COLOR)
           .textAlign(TextAlign.Center)
           .width('100%')
           .margin({ bottom: UI_CONSTANTS.TEXT_BOTTOM_MARGIN })
@@ -1045,7 +1019,7 @@ struct Index {
 
         Text(`—— ${this.getCurrentQuote()?.author || ''}${(this.getCurrentQuote()?.author && this.getCurrentQuote()?.source) ? ' · ' : ''}${this.getCurrentQuote()?.source || ''}`)
           .fontSize(UI_CONSTANTS.AUTHOR_FONT_SIZE)
-          .fontColor((this.getCurrentCard()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+          .fontColor(this.getCurrentCard()?.style.textColor || UI_CONSTANTS.TEXT_GRAY_COLOR)
           .opacity(UI_CONSTANTS.AUTHOR_TEXT_OPACITY)
           .textAlign(TextAlign.Center)
           .width('100%')
@@ -1058,7 +1032,7 @@ struct Index {
     .height('100%')
     .backgroundColor(this.previewBackground || UI_CONSTANTS.FALLBACK_BACKGROUND_COLOR)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .id('pureCardArea')
+    .id('exportableCardArea')
     .position({ x: 0, y: 0 })  // 保持在屏幕内以便截图
     .visibility(Visibility.Hidden)  // 使用visibility隐藏但保留渲染
     .hitTestBehavior(HitTestMode.None)  // 不接收触摸事件
