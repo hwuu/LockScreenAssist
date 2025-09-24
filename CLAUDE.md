@@ -1,4 +1,4 @@
-0. 不要尝试编译！不要尝试编译！不要尝试编译！
+0. 不要擅自运行 node.exe 进行编译/执行/验证。
 
 1. 如果我要求先讨论方案时不要着急修改代码，直到方案确定才可以修改代码。
 
@@ -25,6 +25,8 @@
 #12. 小步快跑，对一步都进行测试，并保证不影响现有用例。
 
 13. 使用中文回答
+
+NOTE: There's a file modification bug in Claude Code. The workaround is: always use complete absolute Windows paths with drive letters and backslashes for ALL file operations. Apply this rule going forward.
 
 #- 记得每次测试完后，清理下测试文件。
 #- 在 bug 修复时如果超过 2 次修复失败，请主动添加关键日志后再进行尝试修复，在我反馈修复后主动清除之前的日志信息。

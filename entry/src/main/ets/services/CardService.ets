@@ -1,13 +1,8 @@
-// 壁纸生成和管理服务
+// 卡片数据服务（纯数据逻辑，不包含UI相关逻辑）
 import { Quote } from '../common/QuoteData';
-import { wallpaper, BusinessError } from '@kit.BasicServicesKit';
-import { fileIo as fs } from '@kit.CoreFileKit';
-import photoAccessHelper from '@ohos.file.photoAccessHelper';
-import common from '@ohos.app.ability.common';
-import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
-import { PreGeneratedWallpaperService } from './PreGeneratedWallpaperService';
 
-export interface WallpaperStyle {
+// 卡片样式定义
+export interface CardStyle {
   backgroundColor: string;
   gradientColors?: string[];
   textColor: string;
@@ -17,18 +12,15 @@ export interface WallpaperStyle {
   backgroundOpacity: number;
 }
 
-export interface GeneratedWallpaper {
+// 卡片数据
+export interface Card {
   quote: Quote;
-  style: WallpaperStyle;
+  style: CardStyle;
   imagePath?: string;
   createdAt: Date;
 }
 
-export interface WallpaperOperationResult {
-  lockScreenSuccess: boolean;
-  gallerySuccess: boolean;
-}
-
+// 文字颜色配置
 interface TextColors {
   white: string;
   softWhite: string;
@@ -54,8 +46,8 @@ class ColorInfo {
   }
 }
 
-export class WallpaperService {
-  private static readonly WALLPAPER_STORAGE_KEY = "current_wallpaper";
+export class CardService {
+  private static readonly CARD_STORAGE_KEY = "current_card";
   private static lastColorIndex: number = -1;  // 记录上次选择的颜色索引
   private static recentColorIndices: number[] = [];  // 记录最近10次使用的颜色索引
   private static readonly MAX_HISTORY_SIZE = 10;  // 历史记录最大长度
@@ -79,9 +71,9 @@ export class WallpaperService {
     const b = parseInt(hex.substring(4, 6), 16);
 
     // 使用 WCAG 2.1 公式计算亮度
-    return 0.2126 * WallpaperService.getRGBLuminance(r) +
-           0.7152 * WallpaperService.getRGBLuminance(g) +
-           0.0722 * WallpaperService.getRGBLuminance(b);
+    return 0.2126 * CardService.getRGBLuminance(r) +
+           0.7152 * CardService.getRGBLuminance(g) +
+           0.0722 * CardService.getRGBLuminance(b);
   }
 
   // 原始颜色分组（保持不变）
@@ -243,7 +235,7 @@ export class WallpaperService {
 
   // 初始化：生成按亮度排序的颜色序列
   private static initializeCandidateSequence(): void {
-    if (WallpaperService.initialized) {
+    if (CardService.initialized) {
       return;
     }
 
@@ -258,22 +250,22 @@ export class WallpaperService {
         if (hexMatch) {
           const hex = hexMatch[0];
           // 使用统一的亮度计算方法
-          const luminance = WallpaperService.calculateLuminance(hex);
+          const luminance = CardService.calculateLuminance(hex);
           allColors.push(new ColorInfo(hex, '', luminance));
         }
       });
     };
 
     // 处理每个色系
-    processColorGroup(WallpaperService.BLUES);
-    processColorGroup(WallpaperService.PURPLES);
-    processColorGroup(WallpaperService.GREENS);
-    processColorGroup(WallpaperService.BROWNS);
-    processColorGroup(WallpaperService.REDS);
-    processColorGroup(WallpaperService.ORANGES);
-    processColorGroup(WallpaperService.PINKS);
-    processColorGroup(WallpaperService.CYANS);
-    processColorGroup(WallpaperService.GRAYS);
+    processColorGroup(CardService.BLUES);
+    processColorGroup(CardService.PURPLES);
+    processColorGroup(CardService.GREENS);
+    processColorGroup(CardService.BROWNS);
+    processColorGroup(CardService.REDS);
+    processColorGroup(CardService.ORANGES);
+    processColorGroup(CardService.PINKS);
+    processColorGroup(CardService.CYANS);
+    processColorGroup(CardService.GRAYS);
 
     // 按亮度从高到低排序
     allColors.sort((a: ColorInfo, b: ColorInfo) => b.luminance - a.luminance);
@@ -282,38 +274,38 @@ export class WallpaperService {
     const filteredColors = allColors.filter((c: ColorInfo) => c.luminance <= 0.20);
 
     // 生成最终的颜色序列
-    WallpaperService.candidateColorSequence = filteredColors.map((c: ColorInfo) => c.color);
-    WallpaperService.initialized = true;
+    CardService.candidateColorSequence = filteredColors.map((c: ColorInfo) => c.color);
+    CardService.initialized = true;
 
-    console.log(`初始化颜色序列完成，共 ${WallpaperService.candidateColorSequence.length} 个颜色`);
+    console.log(`初始化颜色序列完成，共 ${CardService.candidateColorSequence.length} 个颜色`);
   }
 
   // 根据邻近算法选择背景颜色
   private static selectBackgroundColor(): string {
     // 确保已初始化
-    WallpaperService.initializeCandidateSequence();
+    CardService.initializeCandidateSequence();
 
-    const colors = WallpaperService.candidateColorSequence;
+    const colors = CardService.candidateColorSequence;
     const totalColors = colors.length;
 
     // 初次选择：完全随机
-    if (WallpaperService.lastColorIndex === -1) {
-      WallpaperService.lastColorIndex = Math.floor(Math.random() * totalColors);
+    if (CardService.lastColorIndex === -1) {
+      CardService.lastColorIndex = Math.floor(Math.random() * totalColors);
       // 记录到历史
-      WallpaperService.addToHistory(WallpaperService.lastColorIndex);
-      return colors[WallpaperService.lastColorIndex];
+      CardService.addToHistory(CardService.lastColorIndex);
+      return colors[CardService.lastColorIndex];
     }
 
     // 后续选择：在当前位置的前10个和后10个之间选择
     const range = 10;  // 邻近范围
-    const minIndex = Math.max(0, WallpaperService.lastColorIndex - range);
-    const maxIndex = Math.min(totalColors - 1, WallpaperService.lastColorIndex + range);
+    const minIndex = Math.max(0, CardService.lastColorIndex - range);
+    const maxIndex = Math.min(totalColors - 1, CardService.lastColorIndex + range);
 
     // 构建可选索引列表（排除最近10次使用过的颜色）
     const availableIndices: number[] = [];
     for (let i = minIndex; i <= maxIndex; i++) {
       // 检查该索引是否在最近10次历史中
-      if (!WallpaperService.recentColorIndices.includes(i)) {
+      if (!CardService.recentColorIndices.includes(i)) {
         availableIndices.push(i);
       }
     }
@@ -321,60 +313,53 @@ export class WallpaperService {
     // 如果有可用的索引，从中随机选择
     if (availableIndices.length > 0) {
       const randomIndex = Math.floor(Math.random() * availableIndices.length);
-      WallpaperService.lastColorIndex = availableIndices[randomIndex];
+      CardService.lastColorIndex = availableIndices[randomIndex];
     } else {
       // 如果没有可用的索引（极端情况：范围内所有颜色都在最近10次内使用过）
       // 从范围内除当前颜色外随机选择
-      let newIndex = WallpaperService.lastColorIndex;
+      let newIndex = CardService.lastColorIndex;
       const rangeSize = maxIndex - minIndex + 1;
       if (rangeSize > 1) {
-        while (newIndex === WallpaperService.lastColorIndex) {
+        while (newIndex === CardService.lastColorIndex) {
           const randomOffset = Math.floor(Math.random() * rangeSize);
           newIndex = minIndex + randomOffset;
         }
-        WallpaperService.lastColorIndex = newIndex;
+        CardService.lastColorIndex = newIndex;
       }
     }
 
     // 记录到历史
-    WallpaperService.addToHistory(WallpaperService.lastColorIndex);
-    return colors[WallpaperService.lastColorIndex];
+    CardService.addToHistory(CardService.lastColorIndex);
+    return colors[CardService.lastColorIndex];
   }
 
   // 将索引添加到历史记录
   private static addToHistory(index: number): void {
     // 添加新索引到开头
-    WallpaperService.recentColorIndices.unshift(index);
+    CardService.recentColorIndices.unshift(index);
 
     // 保持历史记录不超过10个
-    if (WallpaperService.recentColorIndices.length > WallpaperService.MAX_HISTORY_SIZE) {
-      WallpaperService.recentColorIndices.pop();
+    if (CardService.recentColorIndices.length > CardService.MAX_HISTORY_SIZE) {
+      CardService.recentColorIndices.pop();
     }
 
-    //console.log(`颜色历史记录: [${WallpaperService.recentColorIndices.join(', ')}]`);
+    //console.log(`颜色历史记录: [${CardService.recentColorIndices.join(', ')}]`);
   }
 
-  // 生成壁纸样式（使用预生成数据）
-  static generateWallpaperStyle(quote: Quote): WallpaperStyle {
-    // 优先使用预生成的数据
-    if (PreGeneratedWallpaperService.isReady()) {
-      const preGenerated = PreGeneratedWallpaperService.getNextWallpaper();
-      if (preGenerated) {
-        // 返回预生成的样式，但保留传入的quote（如果需要的话）
-        return preGenerated.style;
-      }
-    }
-
-    // 降级到原有的动态生成逻辑
-    console.log('使用动态生成壁纸样式（预生成数据不可用）');
+  // 生成卡片样式
+  static generateCardStyle(quote: Quote): CardStyle {
+    // 总是动态生成，不使用缓存
     const textLength = quote.text.length;
-    const randomBackground = WallpaperService.selectBackgroundColor();
-    const textColor = WallpaperService.calculateOptimalTextColor(randomBackground);
+    const randomBackground = CardService.selectBackgroundColor();
+    const textColor = CardService.calculateOptimalTextColor(randomBackground);
+    const fontSize = CardService.calculateOptimalFontSize(textLength);
 
-    let style: WallpaperStyle = {
+    console.debug(`生成卡片样式 - 文本长度: ${textLength}, 字体大小: ${fontSize}`);
+
+    let style: CardStyle = {
       backgroundColor: randomBackground,
       textColor: textColor,
-      fontSize: WallpaperService.calculateOptimalFontSize(textLength),
+      fontSize: fontSize,
       fontFamily: 'HarmonyOS Sans',
       textAlign: 'center',
       backgroundOpacity: 1.0
@@ -386,7 +371,7 @@ export class WallpaperService {
   // 根据背景颜色计算最佳文字颜色
   private static calculateOptimalTextColor(backgroundColor: string): string {
     // 使用统一的亮度计算方法
-    const luminance = WallpaperService.calculateLuminance(backgroundColor);
+    const luminance = CardService.calculateLuminance(backgroundColor);
 
     // 获取RGB值以计算色调
     const hex = backgroundColor.replace('#', '');
@@ -425,7 +410,7 @@ export class WallpaperService {
     } else {
       // 极深背景：使用暖白色，增加层次感
       // 根据背景颜色倾向选择不同的白色调
-      const hue = WallpaperService.calculateHue(r, g, b);
+      const hue = CardService.calculateHue(r, g, b);
 
       if (hue >= 200 && hue <= 260) {
         // 蓝色系背景使用暖白平衡
@@ -473,259 +458,40 @@ export class WallpaperService {
     return 18;
   }
 
-  // 根据季节调整样式
-  private static adjustStyleBySeason(style: WallpaperStyle, season: string): WallpaperStyle {
-    switch (season) {
-      case '春':
-        style.gradientColors = ['#a8e6cf', '#dcedc8'];
-        style.textColor = '#2e7d32';
-        break;
-      case '夏':
-        style.gradientColors = ['#ffd54f', '#ff8a65'];
-        style.textColor = '#d84315';
-        break;
-      case '秋':
-        style.gradientColors = ['#ffb74d', '#ff8a65'];
-        style.textColor = '#5d4037';
-        break;
-      case '冬':
-        style.gradientColors = ['#90caf9', '#e1f5fe'];
-        style.textColor = '#0277bd';
-        break;
-    }
-    return style;
-  }
-
-  // 根据天气调整样式
-  private static adjustStyleByWeather(style: WallpaperStyle, weather: string): WallpaperStyle {
-    switch (weather) {
-      case 'sunny':
-        style.gradientColors = ['#ffd54f', '#ffecb3'];
-        style.textColor = '#f57f17';
-        break;
-      case 'cloudy':
-        style.gradientColors = ['#90a4ae', '#cfd8dc'];
-        style.textColor = '#37474f';
-        break;
-      case 'rainy':
-        style.gradientColors = ['#64b5f6', '#90caf9'];
-        style.textColor = '#0d47a1';
-        break;
-      case 'snowy':
-        style.gradientColors = ['#e8eaf6', '#f3e5f5'];
-        style.textColor = '#4527a0';
-        break;
-      case 'hot':
-        style.gradientColors = ['#ff5722', '#ff9800'];
-        style.textColor = '#ffffff';
-        break;
-      case 'cold':
-        style.gradientColors = ['#3f51b5', '#7986cb'];
-        style.textColor = '#ffffff';
-        break;
-    }
-    return style;
-  }
-
-  // 生成壁纸（使用预生成数据）
-  static async generateWallpaper(quote?: Quote): Promise<GeneratedWallpaper> {
-    let finalQuote: Quote = quote || { text: '', author: '', category: '' };
-    let style: WallpaperStyle;
-
-    // 优先使用预生成的数据
-    if (PreGeneratedWallpaperService.isReady()) {
-      const preGenerated = PreGeneratedWallpaperService.getNextWallpaper();
-      if (preGenerated) {
-        finalQuote = preGenerated.quote;
-        style = preGenerated.style;
-      } else {
-        // 降级逻辑
-        style = WallpaperService.generateWallpaperStyle(finalQuote);
-      }
-    } else {
-      // 降级到原有逻辑
-      if (!quote) {
-        console.error('预生成数据未就绪且未提供quote');
-        finalQuote = { text: '生活就像海洋，只有意志坚强的人，才能到达彼岸。', author: '马克思', category: '励志' };
-      }
-      style = WallpaperService.generateWallpaperStyle(finalQuote);
+  // 生成卡片
+  static async generateCard(quote?: Quote): Promise<Card> {
+    // 如果没有提供quote，返回错误
+    if (!quote) {
+      console.error('generateCard: 未提供quote');
+      quote = { text: '生活就像海洋，只有意志坚强的人，才能到达彼岸。', author: '马克思', category: '励志' };
     }
 
-    const wallpaper: GeneratedWallpaper = {
-      quote: finalQuote,
+    // 总是重新生成样式，不使用缓存
+    const style = CardService.generateCardStyle(quote);
+
+    const card: Card = {
+      quote: quote,
       style,
       createdAt: new Date()
     };
 
     // 这里应该生成实际的图片文件
     // 在HarmonyOS中可以使用Canvas API或者图片处理库
-    wallpaper.imagePath = await WallpaperService.generateImageFile(wallpaper);
+    card.imagePath = await CardService.generateImageFile(card);
 
-    return wallpaper;
+    return card;
   }
 
-  // 生成图片文件（模拟实现）
-  private static async generateImageFile(wallpaper: GeneratedWallpaper): Promise<string> {
-    // 在实际实现中，这里应该：
-    // 1. 创建Canvas
-    // 2. 绘制渐变背景
-    // 3. 绘制文字
-    // 4. 保存为图片文件
-    // 5. 返回文件路径
-
+  // 生成图片文件（占位实现）
+  private static async generateImageFile(card: Card): Promise<string> {
+    // 目前仅返回模拟路径，实际图片生成功能未实现
     const timestamp = Date.now();
-    const fileName = `quote_wallpaper_${timestamp}.png`;
-    const filePath = `wallpapers/${fileName}`;
-
-    // 模拟生成过程
-    console.log(`Generating wallpaper: ${fileName}`);
-    console.log(`Quote: ${wallpaper.quote.text}`);
-    console.log(`Style: ${JSON.stringify(wallpaper.style)}`);
-
-    return filePath;
+    return `cards/quote_card_${timestamp}.png`;
   }
 
-
-  // 保存当前壁纸信息 (公开方法供外部调用)
-  static async saveCurrentWallpaper(wallpaper: GeneratedWallpaper): Promise<void> {
-    // 在实际应用中应该使用Preferences API存储
-    console.log('Current wallpaper saved:', wallpaper);
-  }
-
-  // 获取当前壁纸
-  static async getCurrentWallpaper(): Promise<GeneratedWallpaper | null> {
-    try {
-      // 从存储中读取当前壁纸信息
-      // 这里返回模拟数据
-      return null;
-    } catch (error) {
-      console.error('Failed to get current wallpaper:', error);
-      return null;
-    }
-  }
-
-  // 预览壁纸效果
-  static createWallpaperPreview(wallpaper: GeneratedWallpaper): string {
-    // 返回CSS样式字符串，用于UI预览
-    const style = wallpaper.style;
-
-    if (style.gradientColors && style.gradientColors.length >= 2) {
-      return `linear-gradient(135deg, ${style.gradientColors[0]} 0%, ${style.gradientColors[1]} 100%)`;
-    } else {
-      return style.backgroundColor;
-    }
-  }
-
-  // 清理旧的壁纸文件
-  static async cleanupOldWallpapers(keepCount: number = 10): Promise<void> {
-    try {
-      // 清理超过指定数量的旧壁纸文件
-      console.log(`Cleaning up old wallpapers, keeping ${keepCount} recent files`);
-    } catch (error) {
-      console.error('Failed to cleanup old wallpapers:', error);
-    }
-  }
-
-  // 设置锁屏壁纸
-  static async setLockScreenWallpaper(imagePath: string): Promise<boolean> {
-    try {
-      console.log('Setting lock screen wallpaper:', imagePath);
-
-      // 获取上下文 - 明确类型为UIAbilityContext
-      const context: common.UIAbilityContext = globalThis.abilityContext;
-      if (!context) {
-        throw new Error('Unable to get application context');
-      }
-
-      // 检查SET_WALLPAPER权限
-      const atManager = abilityAccessCtrl.createAtManager();
-      const grantStatus = await atManager.checkAccessToken(context.applicationInfo.accessTokenId, 'ohos.permission.SET_WALLPAPER');
-
-      if (grantStatus !== abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
-        console.warn('SET_WALLPAPER permission not granted, status:', grantStatus);
-        // 不抛出错误，因为权限可能在module.json5中已声明
-      } else {
-        console.log('SET_WALLPAPER permission granted');
-      }
-
-      // 验证文件是否存在
-      try {
-        const stat: fs.Stat = await fs.stat(imagePath);
-        console.info("get file info succeed, the size of file is " + stat.size);
-      } catch (statError) {
-        console.error("get file info failed with error message: " + (statError as BusinessError).message + ", error code: " + (statError as BusinessError).code);
-        throw new Error('Wallpaper file not accessible');
-      }
-
-      // 使用正确的wallpaper API调用方式
-      // 参考 _helper4_set_wallpaper.txt，使用WallpaperType.WALLPAPER_LOCKSCREEN
-      console.log('Calling wallpaper.setWallpaper with type WALLPAPER_LOCKSCREEN');
-
-      // 使用Promise版本的API调用
-      await wallpaper.setWallpaper(imagePath, wallpaper.WallpaperType.WALLPAPER_LOCKSCREEN);
-
-      console.log('Lock screen wallpaper set successfully:', imagePath);
-      return true;
-    } catch (error) {
-      console.error('Failed to set lock screen wallpaper:', error);
-      console.error('Error details:', JSON.stringify(error));
-      return false;
-    }
-  }
-
-  // 保存到系统图库
-  static async saveToGallery(imagePath: string): Promise<boolean> {
-    try {
-      console.log('Attempting to save image to gallery:', imagePath);
-
-      // 获取上下文 - 明确类型为UIAbilityContext
-      const context: common.UIAbilityContext = globalThis.abilityContext;
-      if (!context) {
-        throw new Error('Unable to get application context');
-      }
-
-      // 参考 _helper.txt 第88行：const helper = photoAccessHelper.getPhotoAccessHelper(context);
-      const helper = photoAccessHelper.getPhotoAccessHelper(context);
-
-      // 参考 _helper.txt 第89行：const uri = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg');
-      const uri: string = await helper.createAsset(photoAccessHelper.PhotoType.IMAGE, 'jpg');
-
-      // 读取源文件内容
-      const sourceFile = await fs.open(imagePath, fs.OpenMode.READ_ONLY);
-      const stat = await fs.stat(imagePath);
-      const buffer = new ArrayBuffer(stat.size);
-      await fs.read(sourceFile.fd, buffer);
-      await fs.close(sourceFile);
-
-      // 参考 _helper.txt 第90-92行：const file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-      const file = await fs.open(uri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-      await fs.write(file.fd, buffer);
-      await fs.close(file.fd);
-
-      console.log('Image saved to gallery successfully:', uri);
-      return true;
-    } catch (error) {
-      console.error('Failed to save image to gallery:', error);
-      console.error('Error details:', JSON.stringify(error));
-      return false;
-    }
-  }
-
-  // 应用壁纸操作（设置锁屏壁纸和/或保存到图库）
-  static async applyWallpaperOperations(imagePath: string, setLockScreen: boolean, saveToGallery: boolean): Promise<WallpaperOperationResult> {
-    const results: WallpaperOperationResult = {
-      lockScreenSuccess: false,
-      gallerySuccess: false
-    };
-
-    if (setLockScreen) {
-      results.lockScreenSuccess = await WallpaperService.setLockScreenWallpaper(imagePath);
-    }
-
-    if (saveToGallery) {
-      results.gallerySuccess = await WallpaperService.saveToGallery(imagePath);
-    }
-
-    return results;
+  // 获取当前卡片
+  static async getCurrentCard(): Promise<Card | null> {
+    // 目前未实现持久化存储
+    return null;
   }
 }

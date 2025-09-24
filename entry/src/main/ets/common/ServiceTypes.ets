@@ -1,6 +1,6 @@
 // 服务类型定义
 import { Quote } from './QuoteData';
-import { GeneratedWallpaper } from '../services/WallpaperService';
+import { Card } from '../services/CardService';
 import { WallpaperConfig } from './ScheduleConfig';
 import { QuoteDataSource } from './QuoteDataSource';
 import common from '@ohos.app.ability.common';
@@ -105,10 +105,10 @@ export interface ScreenInfo {
   ratio: number;
 }
 
-// 当前壁纸和名言结果接口
-export interface CurrentWallpaperResult {
+// 当前卡片和名言结果接口
+export interface CurrentCardResult {
   quote: Quote | null;
-  wallpaper: GeneratedWallpaper | null;
+  card: Card | null;
 }
 
 // 应用初始化结果接口
@@ -116,13 +116,13 @@ export interface AppInitResult {
   screenInfo: ScreenInfo;
   config: WallpaperConfig | null;
   currentQuote: Quote | null;
-  currentWallpaper: GeneratedWallpaper | null;
+  currentCard: Card | null;
 }
 
 // 名言列表初始化结果接口
 export interface QuoteListInitResult {
   quote: Quote | null;
-  wallpaper: GeneratedWallpaper | null;
+  card: Card | null;
 }
 
 // 操作结果接口
@@ -134,9 +134,9 @@ export interface OperationResult {
 // 名言列表初始化参数接口
 export interface QuoteListInitParams {
   currentQuote: Quote | null;
-  currentWallpaper: GeneratedWallpaper | null;
+  currentCard: Card | null;
   quoteDataSource: QuoteDataSource;
-  wallpaperList: (GeneratedWallpaper | null)[];
+  cardList: (Card | null)[];
   optimizedFontSizes: number[];
 }
 
@@ -144,13 +144,13 @@ export interface QuoteListInitParams {
 export interface LoadMoreParams {
   currentIndex: number;
   quoteDataSource: QuoteDataSource;
-  wallpaperList: (GeneratedWallpaper | null)[];
+  cardList: (Card | null)[];
   optimizedFontSizes: number[];
 }
 
-// 壁纸应用参数接口
-export interface WallpaperApplyParams {
-  setLockScreen: boolean;
+// 卡片应用参数接口
+export interface CardApplyParams {
+  setAsLockScreen: boolean;
   saveToGallery: boolean;
   context: UIAbilityContext;
 }
@@ -158,7 +158,7 @@ export interface WallpaperApplyParams {
 // 处理名言参数接口
 export interface ProcessQuoteParams {
   quoteDataSource: QuoteDataSource;
-  wallpaperList: (GeneratedWallpaper | null)[];
+  cardList: (Card | null)[];
   optimizedFontSizes: number[];
 }
 

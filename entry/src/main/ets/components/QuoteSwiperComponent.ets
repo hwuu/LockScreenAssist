@@ -1,6 +1,6 @@
 // 名言滑动组件
 import { Quote } from '../common/QuoteData';
-import { GeneratedWallpaper } from '../services/WallpaperService';
+import { Card } from '../services/CardService';
 import { QuoteDataSource } from '../common/QuoteDataSource';
 import { TextLayoutResult } from '../common/TextLayoutTypes';
 import { UI_CONSTANTS } from '../common/UIConstants';
@@ -9,8 +9,8 @@ import { UI_CONSTANTS } from '../common/UIConstants';
 export struct QuoteSwiperComponent {
   @Link currentPageIndex: number;
   @Consume quoteDataSource: QuoteDataSource;
-  @Prop wallpaperList: (GeneratedWallpaper | null)[];
-  @Prop optimizedFontSizes: number[];
+  @Link cardList: (Card | null)[];
+  @Link optimizedFontSizes: number[];
   @Prop contentOpacity: number;
   @Prop swipeEnabled: boolean = true;  // 是否启用滑动
   formatQuoteText: (text: string, fontSize?: number, containerWidth?: number) => TextLayoutResult = () => ({ text: '', fontSize: 24, lines: [] });
@@ -18,26 +18,14 @@ export struct QuoteSwiperComponent {
   updateBackgroundForCurrentPage: (index: number) => void = () => {};
   resetHintTimer: () => void = () => {};
 
-  aboutToAppear() {
-    console.log('CLAUDE_DEBUG: QuoteSwiperComponent.aboutToAppear: quoteDataSource totalCount:', this.quoteDataSource.totalCount());
-    console.log('CLAUDE_DEBUG: QuoteSwiperComponent.aboutToAppear: currentPageIndex:', this.currentPageIndex);
-  }
-
-  private logQuoteInfo(quote: Quote, index: number) {
-    console.log(`CLAUDE_DEBUG: QuoteSwiperComponent LazyForEach index ${index}:`, quote?.text || 'null');
-    const formattedText = this.formatQuoteText(quote.text);
-    const fontSize = this.optimizedFontSizes[index] || (this.wallpaperList[index]?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE;
-    const fontColor = (this.wallpaperList[index]?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR;
-    console.log(`CLAUDE_DEBUG: QuoteSwiperComponent Text ${index}: text="${formattedText.text}", fontSize=${fontSize}, color=${fontColor}`);
-  }
 
   build() {
     Swiper() {
       LazyForEach(this.quoteDataSource, (quote: Quote, index: number) => {
         Column() {
           Text(this.formatQuoteText(quote.text).text)
-            .fontSize(this.optimizedFontSizes[index] || (this.wallpaperList[index]?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE)
-            .fontColor((this.wallpaperList[index]?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+            .fontSize(this.optimizedFontSizes[index] || (this.cardList[index]?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE)
+            .fontColor((this.cardList[index]?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
             .textAlign(TextAlign.Center)
             .width('100%')
             .margin({ bottom: UI_CONSTANTS.TEXT_BOTTOM_MARGIN })
@@ -46,7 +34,7 @@ export struct QuoteSwiperComponent {
 
           Text(`—— ${quote.author || ''}${(quote.author && quote.source) ? ' · ' : ''}${quote.source || ''}`)
             .fontSize(UI_CONSTANTS.AUTHOR_FONT_SIZE)
-            .fontColor((this.wallpaperList[index]?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+            .fontColor((this.cardList[index]?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
             .opacity(UI_CONSTANTS.AUTHOR_TEXT_OPACITY)
             .textAlign(TextAlign.Center)
             .width('100%')
@@ -67,11 +55,7 @@ export struct QuoteSwiperComponent {
     .cachedCount(UI_CONSTANTS.SWIPER_CACHED_COUNT)
     .enabled(this.swipeEnabled)
     .onChange((index: number) => {
-      console.log('CLAUDE_DEBUG: QuoteSwiperComponent.onChange: index:', index, 'totalCount:', this.quoteDataSource.totalCount());
       if (index >= 0 && index < this.quoteDataSource.totalCount()) {
-        console.log('CLAUDE_DEBUG: QuoteSwiperComponent.onChange: 调用onScrollIndex');
-        const currentQuote = this.quoteDataSource.getData(index);
-        console.log('CLAUDE_DEBUG: QuoteSwiperComponent.onChange: 当前名言:', currentQuote?.text || 'null');
         this.onScrollIndex(index);
         this.updateBackgroundForCurrentPage(index);
         this.resetHintTimer();
@@ -82,11 +66,9 @@ export struct QuoteSwiperComponent {
     })
     .onAnimationStart((index: number, targetIndex: number, extraInfo: SwiperAnimationEvent) => {
       if (targetIndex < 0) {
-        console.log('CLAUDE_DEBUG: 防止向前滑动超出边界');
         return;
       }
       if (targetIndex >= this.quoteDataSource.totalCount()) {
-        console.log('CLAUDE_DEBUG: 防止向后滑动超出边界');
         return;
       }
     })

@@ -128,7 +128,7 @@ export class QuoteDataLoaderService {
   private static getFallbackShijingQuotes(): Quote[] {
     return [
       { text: "关关雎鸠，在河之洲。窈窕淑女，君子好逑。", category: "爱情", source: "《诗经·周南·关雎》" },
-      { text: "蒹葭苍苍，白露为霜。所谓伊人，在水一方。", category: "思念", season: "秋", weather: "cold", source: "《诗经·秦风·蒹葭》" },
+      { text: "蒹葭苍苍，白露为霜。所谓伊人，在水一方。", category: "思念", source: "《诗经·秦风·蒹葭》" },
       { text: "死生契阔，与子成说。执子之手，与子偕老。", category: "爱情", source: "《诗经·邶风·击鼓》" },
       { text: "他山之石，可以攻玉。", category: "学习", source: "《诗经·小雅·鹤鸣》" },
       { text: "高山仰止，景行行止。", category: "敬仰", source: "《诗经·小雅·车舝》" }

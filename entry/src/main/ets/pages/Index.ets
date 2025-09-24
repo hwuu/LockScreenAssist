@@ -1,11 +1,11 @@
-import { Quote } from '../common/QuoteData';
-import { GeneratedWallpaper } from '../services/WallpaperService';
+import { Quote, QuoteData } from '../common/QuoteData';
+import { CardService, Card } from '../services/CardService';
 import { WallpaperConfig } from '../common/ScheduleConfig';
 import router from '@ohos.router';
 import { QuoteDataSource } from '../common/QuoteDataSource';
 import { AppInitializationService } from '../services/AppInitializationService';
 import { QuotePageService } from '../services/QuotePageService';
-import { WallpaperUIService } from '../services/WallpaperUIService';
+import { CardUIService } from '../services/CardUIService';
 import { HintAnimationService } from '../services/HintAnimationService';
 import { TextLayoutResult } from '../common/TextLayoutTypes';
 import { UI_CONSTANTS } from '../common/UIConstants';
@@ -20,11 +20,12 @@ import common from '@ohos.app.ability.common';
 @Component
 struct Index {
   @State currentQuote: Quote | null = null;
-  @State currentWallpaper: GeneratedWallpaper | null = null;
+  @State currentCard: Card | null = null;
   @State isLoading: boolean = false;
+  @StorageLink('quoteSourceChanged') @Watch('onQuoteSourceChanged') quoteSourceChanged: boolean = false;
   @State previewMode: 'current' | 'recommended' = 'current';
   @State recommendedQuote: Quote | null = null;
-  @State recommendedWallpaper: GeneratedWallpaper | null = null;
+  @State recommendedCard: Card | null = null;
   @State usedRecommendations: Set<string> = new Set();
 
   // 自动播放相关状态
@@ -69,12 +70,11 @@ struct Index {
 
   @State currentPageIndex: number = 0;
   @Provide quoteDataSource: QuoteDataSource = new QuoteDataSource();
-  @State wallpaperList: (GeneratedWallpaper | null)[] = [];
+  @State cardList: (Card | null)[] = [];
   @State optimizedFontSizes: number[] = [];
 
   private appInitService: AppInitializationService | null = null;
   private quotePageService: QuotePageService | null = null;
-  private wallpaperUIService: WallpaperUIService | null = null;
   private hintAnimationService: HintAnimationService | null = null;
   private autoPlayService: AutoPlayService | null = null;
 
@@ -89,14 +89,122 @@ struct Index {
     console.log('Index aboutToDisappear: 已清理所有定时器');
   }
 
+  async onPageShow() {
+    console.log('Index onPageShow - 页面显示');
+    console.log('Index onPageShow - quoteSourceChanged值:', this.quoteSourceChanged);
+
+    // 检查是否需要重新加载（名言来源变化）
+    if (this.quoteSourceChanged) {
+      console.log('Index onPageShow - 检测到名言来源变化，重新加载...');
+
+      // 清除标记
+      this.quoteSourceChanged = false;
+      AppStorage.setOrCreate('quoteSourceChanged', false);
+
+      // 重新加载名言
+      await this.reloadQuotesWithNewSource();
+    }
+  }
+
+  /**
+   * 监听名言源变化
+   */
+  onQuoteSourceChanged() {
+    console.log('Index - 监听到quoteSourceChanged变化:', this.quoteSourceChanged);
+    if (this.quoteSourceChanged) {
+      console.log('Index - 准备重新加载名言...');
+      // 延迟执行，确保页面已经显示
+      setTimeout(() => {
+        this.quoteSourceChanged = false;
+        AppStorage.setOrCreate('quoteSourceChanged', false);
+        this.reloadQuotesWithNewSource();
+      }, 100);
+    }
+  }
+
+  /**
+   * 重新加载名言（当名言来源变化时）
+   */
+  async reloadQuotesWithNewSource() {
+    console.log('开始重新加载名言...');
+
+    // 停止自动播放
+    if (this.isAutoPlaying) {
+      this.completeStopping();
+    }
+
+    // 显示加载动画
+    this.isLoading = true;
+
+    try {
+      // 清理现有的名言数据
+      // 重要：不要创建新实例，而是清空现有数据源
+      // 否则Swiper组件可能仍然绑定到旧实例
+      this.quoteDataSource.clear();
+      this.cardList = [];
+      this.optimizedFontSizes = [];
+
+      // 重要：清理QuotePageService中的已使用名言缓存
+      // 否则新源的名言可能因为文本相同而被错误地排除
+      if (this.quotePageService) {
+        this.quotePageService.clearUsedQuoteTexts();
+      }
+      console.log('已清理现有名言数据和缓存');
+
+      // 重新初始化应用（与aboutToAppear的逻辑相同）
+      const context = getContext(this) as common.UIAbilityContext;
+      console.log('重新加载前的名言来源:', QuoteData.getQuoteSource());
+      const initResult = await this.appInitService?.initializeApp(context);
+      console.log('重新加载后的名言来源:', QuoteData.getQuoteSource());
+
+      if (initResult) {
+        // 更新状态
+        this.config = initResult.config;
+        this.currentQuote = initResult.currentQuote;
+        this.currentCard = initResult.currentCard;
+
+        console.log('重新加载后的名言:', this.currentQuote?.text || 'null');
+
+        // 重新初始化名言列表
+        const quoteResult = await this.quotePageService?.initializeQuoteList({
+          currentQuote: this.currentQuote,
+          currentCard: this.currentCard,
+          quoteDataSource: this.quoteDataSource,
+          cardList: this.cardList,
+          optimizedFontSizes: this.optimizedFontSizes
+        });
+
+        if (quoteResult) {
+          this.currentQuote = quoteResult.quote;
+          this.currentCard = quoteResult.card;
+        }
+
+        // 重置到第一页
+        this.currentPageIndex = 0;
+
+        // 更新预览
+        await this.updatePreview();
+        await this.updateBackgroundForCurrentPage(this.currentPageIndex);
+
+        console.log('名言重新加载完成');
+      }
+    } catch (error) {
+      console.error('重新加载名言失败:', error);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
   async aboutToAppear() {
-    console.log('CLAUDE_DEBUG: Index.aboutToAppear 开始');
+
+    // 初始化AppStorage标记
+    AppStorage.setOrCreate('quoteSourceChanged', false);
 
     // 注册全局后台事件处理器
     this.registerBackgroundEventHandler();
 
     this.appInitService = new AppInitializationService();
-    this.wallpaperUIService = new WallpaperUIService();
+    // CardUIService 使用静态方法，不需要实例化
 
     this.hintAnimationService = new HintAnimationService((opacity: number, duration: number) => {
       animateTo({
@@ -107,36 +215,27 @@ struct Index {
       });
     });
     const context = getContext(this) as common.UIAbilityContext;
-    console.log('CLAUDE_DEBUG: Index 获取到context, 开始初始化应用');
     const initResult = await this.appInitService.initializeApp(context);
-    console.log('CLAUDE_DEBUG: Index 应用初始化完成, initResult:', {
-      hasQuote: !!initResult.currentQuote,
-      hasWallpaper: !!initResult.currentWallpaper,
-      screenInfo: initResult.screenInfo
-    });
 
     this.screenWidth = initResult.screenInfo.width;
     this.screenHeight = initResult.screenInfo.height;
     this.screenRatio = initResult.screenInfo.ratio;
     this.config = initResult.config;
     this.currentQuote = initResult.currentQuote;
-    this.currentWallpaper = initResult.currentWallpaper;
+    this.currentCard = initResult.currentCard;
 
-    console.log('CLAUDE_DEBUG: Index 当前名言:', this.currentQuote?.text || 'null');
 
     this.quotePageService = new QuotePageService(this.screenWidth, this.screenHeight);
-    console.log('CLAUDE_DEBUG: Index 开始初始化QuoteList, currentQuote:', this.currentQuote?.text || 'null');
     const quoteResult = await this.quotePageService.initializeQuoteList({
       currentQuote: this.currentQuote,
-      currentWallpaper: this.currentWallpaper,
+      currentCard: this.currentCard,
       quoteDataSource: this.quoteDataSource,
-      wallpaperList: this.wallpaperList,
+      cardList: this.cardList,
       optimizedFontSizes: this.optimizedFontSizes
     });
 
     this.currentQuote = quoteResult.quote;
-    this.currentWallpaper = quoteResult.wallpaper;
-    console.log('CLAUDE_DEBUG: Index QuoteList初始化完成, 最终名言:', this.currentQuote?.text || 'null');
+    this.currentCard = quoteResult.card;
 
     await this.updatePreview();
     await this.updateBackgroundForCurrentPage(this.currentPageIndex);
@@ -258,21 +357,17 @@ struct Index {
 
   getCurrentQuote(): Quote | null {
     const totalCount = this.quoteDataSource.totalCount();
-    console.log(`CLAUDE_DEBUG: Index.getCurrentQuote pageIndex=${this.currentPageIndex}, totalCount=${totalCount}`);
     if (totalCount > this.currentPageIndex) {
-      const quote = this.quoteDataSource.getData(this.currentPageIndex);
-      console.log('CLAUDE_DEBUG: Index.getCurrentQuote 从DataSource获取:', quote?.text || 'null');
-      return quote;
+      return this.quoteDataSource.getData(this.currentPageIndex);
     }
-    console.log('CLAUDE_DEBUG: Index.getCurrentQuote 使用currentQuote:', this.currentQuote?.text || 'null');
     return this.currentQuote;
   }
 
-  getCurrentWallpaper(): GeneratedWallpaper | null {
-    if (this.wallpaperList.length > this.currentPageIndex) {
-      return this.wallpaperList[this.currentPageIndex];
+  getCurrentCard(): Card | null {
+    if (this.cardList.length > this.currentPageIndex) {
+      return this.cardList[this.currentPageIndex];
     }
-    return this.currentWallpaper;
+    return this.currentCard;
   }
 
 
@@ -280,8 +375,9 @@ struct Index {
     try {
       this.isTransitioning = true;
 
-      const currentWallpaper = this.getCurrentWallpaper();
-      const newBackground = await this.wallpaperUIService?.updatePreview(currentWallpaper) || '#2c3e50';
+      const currentCard = this.getCurrentCard();
+      console.log(`updatePreview - currentPageIndex: ${this.currentPageIndex}, card:`, currentCard?.quote?.text, currentCard?.style?.fontSize);
+      const newBackground = CardUIService.getCardBackgroundColor(currentCard);
 
       if (this.isInitialLoad) {
         // 初次加载时，直接设置背景并渐入
@@ -609,10 +705,10 @@ struct Index {
 
     console.log(`准备下一页背景，nextIndex: ${nextIndex}, totalCount: ${totalCount}`);
 
-    const nextWallpaper = this.wallpaperList[nextIndex];
-    if (nextWallpaper) {
-      // 使用 WallpaperUIService 获取正确格式的背景
-      this.nextBackground = await this.wallpaperUIService?.updatePreview(nextWallpaper) || UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
+    const nextCard = this.cardList[nextIndex];
+    if (nextCard) {
+      // 使用 CardUIService 获取正确格式的背景
+      this.nextBackground = CardUIService.getCardBackgroundColor(nextCard);
       console.log(`下一页背景准备完成: ${this.nextBackground}`);
     } else {
       this.nextBackground = UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
@@ -621,9 +717,7 @@ struct Index {
   }
 
   onScrollIndex(firstIndex: number) {
-    console.log('CLAUDE_DEBUG: Index.onScrollIndex 从', this.currentPageIndex, '到', firstIndex);
     this.currentPageIndex = firstIndex;
-    console.log('CLAUDE_DEBUG: Index.onScrollIndex 更新后 currentPageIndex:', this.currentPageIndex);
     this.loadMoreIfNeeded(firstIndex);
   }
 
@@ -632,7 +726,7 @@ struct Index {
       await this.quotePageService.loadMoreIfNeeded({
         currentIndex: currentIndex,
         quoteDataSource: this.quoteDataSource,
-        wallpaperList: this.wallpaperList,
+        cardList: this.cardList,
         optimizedFontSizes: this.optimizedFontSizes
       });
     }
@@ -640,16 +734,12 @@ struct Index {
 
   async updateBackgroundForCurrentPage(index: number) {
     try {
-      console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage index:', index, 'wallpaperList.length:', this.wallpaperList.length);
-      const newBackground = await this.wallpaperUIService?.updateBackgroundForCurrentPage(index, this.wallpaperList) || UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
-
-      console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage 新背景色:', newBackground);
+      const newBackground = CardUIService.getBackgroundColorForPage(index, this.cardList);
       animateTo({
         duration: 300,
         curve: Curve.EaseInOut
       }, () => {
         this.previewBackground = newBackground;
-        console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage 背景色已更新到:', this.previewBackground);
       });
 
       console.log('Background updated for page:', index, newBackground);
@@ -659,7 +749,7 @@ struct Index {
   }
 
 
-  async applyWallpaperOptions() {
+  async applyCardOptions() {
     if (!this.setLockScreen && !this.saveToGallery) {
       this.showSaveDialog = false;
       return;
@@ -669,8 +759,8 @@ struct Index {
 
     try {
       const context = getContext(this) as common.UIAbilityContext;
-      const result = await this.wallpaperUIService?.applyWallpaperOptions({
-        setLockScreen: this.setLockScreen,
+      const result = await CardUIService.exportCard({
+        setAsLockScreen: this.setLockScreen,
         saveToGallery: this.saveToGallery,
         context: context
       });
@@ -715,8 +805,8 @@ struct Index {
       Column() {
         QuoteSwiperComponent({
           currentPageIndex: $currentPageIndex,
-          wallpaperList: this.wallpaperList,
-          optimizedFontSizes: this.optimizedFontSizes,
+          cardList: $cardList,
+          optimizedFontSizes: $optimizedFontSizes,
           contentOpacity: this.isAutoPlaying ? this.textOpacity : this.contentOpacity,
           formatQuoteText: this.formatQuoteText.bind(this),
           onScrollIndex: this.onScrollIndex.bind(this),
@@ -767,7 +857,7 @@ struct Index {
       }
 
       LoadingOverlayComponent({ isLoading: this.isLoading })
-      this.buildPureWallpaper()
+      this.buildPureCard()
     }
     .width('100%')
     .height('100%')
@@ -823,7 +913,7 @@ struct Index {
         Column() {
           Column() {
             Row() {
-              Checkbox({ name: 'setLockScreen', group: 'wallpaperOptions' })
+              Checkbox({ name: 'setLockScreen', group: 'cardOptions' })
                 .select(this.setLockScreen)
                 .selectedColor('#5b9bd5')
                 .onChange((value: boolean) => {
@@ -849,7 +939,7 @@ struct Index {
           }
 
           Row() {
-            Checkbox({ name: 'saveToGallery', group: 'wallpaperOptions' })
+            Checkbox({ name: 'saveToGallery', group: 'cardOptions' })
               .select(this.saveToGallery)
               .selectedColor('#5b9bd5')
               .onChange((value: boolean) => {
@@ -909,7 +999,7 @@ struct Index {
           .margin({ left: '10%' })
           .enabled(!this.isApplying && (this.setLockScreen || this.saveToGallery))
           .onClick(async () => {
-            await this.applyWallpaperOptions();
+            await this.applyCardOptions();
           })
         }
         .width('100%')
@@ -939,14 +1029,14 @@ struct Index {
   }
 
   @Builder
-  buildPureWallpaper() {
+  buildPureCard() {
     // 为了支持截图，需要一个在屏幕内但不可见的元素
     // 使用visibility(Visibility.Hidden)会保留渲染但不显示
     Column() {
       if (this.getCurrentQuote()) {
         Text(this.formatQuoteText(this.getCurrentQuote()?.text || '').text)
-          .fontSize(this.optimizedFontSizes[this.currentPageIndex] || (this.getCurrentWallpaper()?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE)
-          .fontColor((this.getCurrentWallpaper()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+          .fontSize(this.optimizedFontSizes[this.currentPageIndex] || (this.getCurrentCard()?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE)
+          .fontColor((this.getCurrentCard()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
           .textAlign(TextAlign.Center)
           .width('100%')
           .margin({ bottom: UI_CONSTANTS.TEXT_BOTTOM_MARGIN })
@@ -955,7 +1045,7 @@ struct Index {
 
         Text(`—— ${this.getCurrentQuote()?.author || ''}${(this.getCurrentQuote()?.author && this.getCurrentQuote()?.source) ? ' · ' : ''}${this.getCurrentQuote()?.source || ''}`)
           .fontSize(UI_CONSTANTS.AUTHOR_FONT_SIZE)
-          .fontColor((this.getCurrentWallpaper()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+          .fontColor((this.getCurrentCard()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
           .opacity(UI_CONSTANTS.AUTHOR_TEXT_OPACITY)
           .textAlign(TextAlign.Center)
           .width('100%')
@@ -968,7 +1058,7 @@ struct Index {
     .height('100%')
     .backgroundColor(this.previewBackground || UI_CONSTANTS.FALLBACK_BACKGROUND_COLOR)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .id('pureWallpaperArea')
+    .id('pureCardArea')
     .position({ x: 0, y: 0 })  // 保持在屏幕内以便截图
     .visibility(Visibility.Hidden)  // 使用visibility隐藏但保留渲染
     .hitTestBehavior(HitTestMode.None)  // 不接收触摸事件

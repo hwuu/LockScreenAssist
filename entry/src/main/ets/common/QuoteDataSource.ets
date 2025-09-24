@@ -7,7 +7,7 @@ export class QuoteDataSource implements IDataSource {
   private listeners: DataChangeListener[] = [];
 
   public totalCount(): number {
-    console.log('CLAUDE_DEBUG: QuoteDataSource.totalCount:', this.quotes.length);
+    //console.log('CLAUDE_DEBUG: QuoteDataSource.totalCount:', this.quotes.length);
     return this.quotes.length;
   }
 
@@ -30,7 +30,7 @@ export class QuoteDataSource implements IDataSource {
   }
 
   public pushItem(quote: Quote): void {
-    console.log('CLAUDE_DEBUG: QuoteDataSource.pushItem:', quote?.text || 'null', '总数将变为:', this.quotes.length + 1);
+    //console.log('CLAUDE_DEBUG: QuoteDataSource.pushItem:', quote?.text || 'null', '总数将变为:', this.quotes.length + 1);
     this.quotes.push(quote);
     this.notifyDataAdd(this.quotes.length - 1);
   }
@@ -44,5 +44,16 @@ export class QuoteDataSource implements IDataSource {
     this.listeners.forEach((listener: DataChangeListener) => {
       listener.onDataAdd(index);
     });
+  }
+
+  // 清空所有数据
+  public clear(): void {
+    const oldCount = this.quotes.length;
+    this.quotes = [];
+    // 通知所有数据已删除
+    this.listeners.forEach((listener: DataChangeListener) => {
+      listener.onDataReloaded();
+    });
+    console.log(`QuoteDataSource: 已清空 ${oldCount} 条数据`);
   }
 }

@@ -1,13 +1,11 @@
 // 名言页面业务逻辑服务
 import { Quote } from '../common/QuoteData';
 import { QuoteSelectionService } from './QuoteSelectionService';
-import { WallpaperService, GeneratedWallpaper } from './WallpaperService';
+import { CardService, Card } from './CardService';
 import { TextLayoutService } from './TextLayoutService';
 import { TextUtils } from '../common/TextUtils';
 import { TextLayoutResult } from '../common/TextLayoutTypes';
-import { QuoteDataSource } from '../common/QuoteDataSource';
 import { QuoteListInitResult, QuoteListInitParams, LoadMoreParams, ProcessQuoteParams } from '../common/ServiceTypes';
-import { PreGeneratedWallpaperService } from './PreGeneratedWallpaperService';
 
 export class QuotePageService {
   private textLayoutService: TextLayoutService | null = null;
@@ -29,35 +27,15 @@ export class QuotePageService {
   }
 
   async processQuote(quote: Quote, params: ProcessQuoteParams): Promise<void> {
-    // 使用预生成数据优化
-    let finalQuote = quote;
-    let wallpaper: GeneratedWallpaper;
+    // 直接使用传入的quote，不使用预生成数据
+    const card = await CardService.generateCard(quote);
 
-    if (PreGeneratedWallpaperService.isReady()) {
-      // 使用预生成的壁纸数据
-      const preGenerated = PreGeneratedWallpaperService.getNextWallpaper();
-      if (preGenerated) {
-        finalQuote = preGenerated.quote;
-        wallpaper = {
-          quote: preGenerated.quote,
-          style: preGenerated.style,
-          createdAt: new Date()
-        };
-      } else {
-        // 降级到动态生成
-        wallpaper = await WallpaperService.generateWallpaper(quote);
-      }
-    } else {
-      // 降级到动态生成
-      wallpaper = await WallpaperService.generateWallpaper(quote);
-    }
-
-    params.quoteDataSource.pushItem(finalQuote);
-    this.usedQuoteTexts.add(finalQuote.text);
-    params.wallpaperList.push(wallpaper);
-    const quoteFontSize = wallpaper?.style.fontSize || 24;
+    params.quoteDataSource.pushItem(quote);
+    this.usedQuoteTexts.add(quote.text);
+    params.cardList.push(card);
+    const quoteFontSize = card?.style.fontSize || 24;
     const quoteContainerWidth = this.calculateDynamicContainerWidth(quoteFontSize);
-    const quoteLayout = this.formatQuoteText(finalQuote.text, quoteFontSize, quoteContainerWidth);
+    const quoteLayout = this.formatQuoteText(quote.text, quoteFontSize, quoteContainerWidth);
     params.optimizedFontSizes.push(quoteLayout.fontSize);
   }
 
@@ -73,9 +51,9 @@ export class QuotePageService {
     }
 
     try {
-      console.log(`Starting text layout optimization for: "${text.substring(0, 20)}..."`);
+      //console.log(`Starting text layout optimization for: "${text.substring(0, 20)}..."`);
       const result = this.textLayoutService.optimizeLayout(text, containerWidth, fontSize);
-      console.log(`Optimization completed. Font size: ${result.fontSize}, Lines: ${result.lines.length}`);
+      //console.log(`Optimization completed. Font size: ${result.fontSize}, Lines: ${result.lines.length}`);
       return result;
     } catch (error) {
       console.error('Advanced text optimization failed, fallback to simple formatting:', error);
@@ -125,28 +103,13 @@ export class QuotePageService {
       params.quoteDataSource.pushItem(params.currentQuote);
 
       // 如果没有当前壁纸，生成一个
-      if (!params.currentWallpaper) {
-        // 优先使用预生成数据
-        if (PreGeneratedWallpaperService.isReady()) {
-          const preGenerated = PreGeneratedWallpaperService.getNextWallpaper();
-          if (preGenerated) {
-            params.currentQuote = preGenerated.quote;
-            params.currentWallpaper = {
-              quote: preGenerated.quote,
-              style: preGenerated.style,
-              createdAt: new Date()
-            };
-          } else {
-            params.currentWallpaper = await WallpaperService.generateWallpaper(params.currentQuote);
-          }
-        } else {
-          params.currentWallpaper = await WallpaperService.generateWallpaper(params.currentQuote);
-        }
+      if (!params.currentCard) {
+        params.currentCard = await CardService.generateCard(params.currentQuote);
       }
-      params.wallpaperList.push(params.currentWallpaper);
+      params.cardList.push(params.currentCard);
 
       // 预处理当前名言的字体大小
-      const initialFontSize = params.currentWallpaper?.style.fontSize || 24;
+      const initialFontSize = params.currentCard?.style.fontSize || 24;
       console.log(`使用初始字体大小: ${initialFontSize}px`);
 
       // 重新计算基于字体大小的安全边距和容器宽度
@@ -162,111 +125,42 @@ export class QuotePageService {
       console.log(`优化后字体大小: ${textLayout.fontSize}px`);
       console.log(`优化后文本:\n${textLayout.text}`);
 
-      // 预加载更多名言（优先使用预生成数据）
-      console.log(`=== 开始加载名言 ===`);
+      // 一次性加载所有名言（99条，加上当前的1条共100条）
+      console.log(`=== 开始加载所有名言 ===`);
       let loadedCount = 0;
+      const targetCount = 99; // 加上当前的1条，总共100条
 
-      if (PreGeneratedWallpaperService.isReady()) {
-        // 使用预生成数据加载10条
-        for (let i = 0; i < 10; i++) {
-          const preGenerated = PreGeneratedWallpaperService.getNextWallpaper();
-          if (preGenerated) {
-            const processParams: ProcessQuoteParams = {
-              quoteDataSource: params.quoteDataSource,
-              wallpaperList: params.wallpaperList,
-              optimizedFontSizes: params.optimizedFontSizes
-            };
-            await this.processQuote(preGenerated.quote, processParams);
-            loadedCount++;
-          }
-        }
-        console.log(`从预生成数据加载了${loadedCount}条名言`);
-      } else {
-        // 降级到推荐系统
-        const moreQuotes = await QuoteSelectionService.getRecommendedQuotes(10, this.usedQuoteTexts);
-        if (moreQuotes && moreQuotes.length > 0) {
-          for (const quote of moreQuotes) {
-            const processParams: ProcessQuoteParams = {
-              quoteDataSource: params.quoteDataSource,
-              wallpaperList: params.wallpaperList,
-              optimizedFontSizes: params.optimizedFontSizes
-            };
-            await this.processQuote(quote, processParams);
-          }
-          console.log(`从推荐系统加载了${moreQuotes.length}条名言`);
+      // 从推荐系统加载99条名言
+      console.log(`当前已使用名言数量: ${this.usedQuoteTexts.size}`);
+      const moreQuotes = await QuoteSelectionService.getRecommendedQuotes(targetCount, this.usedQuoteTexts);
+      console.log(`获取到 ${moreQuotes?.length || 0} 条新名言`);
+      if (moreQuotes && moreQuotes.length > 0) {
+        for (const quote of moreQuotes) {
+          const processParams: ProcessQuoteParams = {
+            quoteDataSource: params.quoteDataSource,
+            cardList: params.cardList,
+            optimizedFontSizes: params.optimizedFontSizes
+          };
+          await this.processQuote(quote, processParams);
+          loadedCount++;
         }
       }
+      console.log(`加载了${loadedCount}条名言，加上当前名言共${loadedCount + 1}条`);
 
-      const result: QuoteListInitResult = { quote: params.currentQuote, wallpaper: params.currentWallpaper };
+      const result: QuoteListInitResult = { quote: params.currentQuote, card: params.currentCard };
       return result;
     } catch (error) {
       console.error('Failed to initialize quote list:', error);
-      const result: QuoteListInitResult = { quote: params.currentQuote, wallpaper: params.currentWallpaper };
+      const result: QuoteListInitResult = { quote: params.currentQuote, card: params.currentCard };
       return result;
     }
   }
 
-  // 按需加载更多内容
+  // 移除了动态加载功能 - 所有100条名言在初始化时一次性加载
   async loadMoreIfNeeded(params: LoadMoreParams): Promise<void> {
-    const totalCount = params.quoteDataSource.totalCount();
-
-    // 限制最多加载100条内容
-    if (totalCount >= 100) {
-      console.log('已达到最大加载数量限制(100条)');
-      return;
-    }
-
-    // 当滚动到倒数第3项时，预加载更多内容
-    if (params.currentIndex >= totalCount - 3) {
-      try {
-        // 计算还能加载多少条，避免超过100条限制
-        const remainingCount = 100 - totalCount;
-        const loadCount = Math.min(10, remainingCount); // 预加载10条或剩余数量
-
-        for (let i = 0; i < loadCount; i++) {
-          // 优先使用预生成数据
-          if (PreGeneratedWallpaperService.isReady()) {
-            const preGenerated = PreGeneratedWallpaperService.getNextWallpaper();
-            if (preGenerated) {
-              const processParams2: ProcessQuoteParams = {
-                quoteDataSource: params.quoteDataSource,
-                wallpaperList: params.wallpaperList,
-                optimizedFontSizes: params.optimizedFontSizes
-              };
-              await this.processQuote(preGenerated.quote, processParams2);
-            } else {
-              // 降级到推荐系统
-              const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1, this.usedQuoteTexts);
-              if (recommendedQuotes && recommendedQuotes.length > 0) {
-                const quote = recommendedQuotes[0];
-                const processParams2: ProcessQuoteParams = {
-                  quoteDataSource: params.quoteDataSource,
-                  wallpaperList: params.wallpaperList,
-                  optimizedFontSizes: params.optimizedFontSizes
-                };
-                await this.processQuote(quote, processParams2);
-              }
-            }
-          } else {
-            // 降级到推荐系统
-            const recommendedQuotes = await QuoteSelectionService.getRecommendedQuotes(1, this.usedQuoteTexts);
-            if (recommendedQuotes && recommendedQuotes.length > 0) {
-              const quote = recommendedQuotes[0];
-              const processParams2: ProcessQuoteParams = {
-                quoteDataSource: params.quoteDataSource,
-                wallpaperList: params.wallpaperList,
-                optimizedFontSizes: params.optimizedFontSizes
-              };
-              await this.processQuote(quote, processParams2);
-            }
-          }
-        }
-
-        console.log(`加载了${loadCount}条内容，当前总数：${params.quoteDataSource.totalCount()}`);
-      } catch (error) {
-        console.error('Failed to load more quotes:', error);
-      }
-    }
+    // 不再动态加载，所有内容在initializeQuoteList中一次性加载完成
+    // 保留此方法以避免调用错误，但不执行任何操作
+    return;
   }
 
   // 获取已使用的名言文本集合
@@ -277,5 +171,11 @@ export class QuotePageService {
   // 添加已使用的名言文本
   addUsedQuoteText(text: string): void {
     this.usedQuoteTexts.add(text);
+  }
+
+  // 清空已使用的名言文本集合
+  clearUsedQuoteTexts(): void {
+    this.usedQuoteTexts.clear();
+    console.log('已清空已使用名言文本缓存');
   }
 }

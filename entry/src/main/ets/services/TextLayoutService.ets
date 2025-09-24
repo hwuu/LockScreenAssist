@@ -66,10 +66,10 @@ export class TextLayoutService {
     let bestScore = Infinity;
     let bestResult: TextLayoutResult | null = null;
 
-    console.log(`=== 开始搜索最佳字体大小 ===`);
-    console.log(`文本: "${text}"`);
-    console.log(`容器宽度: ${containerWidth}px`);
-    console.log(`字体范围: ${minSize}px - ${maxSize}px, 步长: ${step}px`);
+    console.debug(`=== 开始搜索最佳字体大小 ===`);
+    console.debug(`文本: "${text}"`);
+    console.debug(`容器宽度: ${containerWidth}px`);
+    console.debug(`字体范围: ${minSize}px - ${maxSize}px, 步长: ${step}px`);
 
     for (let fontSize = minSize; fontSize <= maxSize; fontSize += step) {
       const metrics = this.measureText(text, fontSize, containerWidth);
@@ -84,26 +84,26 @@ export class TextLayoutService {
       const r7 = this.calculateVisualDensityUniformity(metrics);
       const r9 = this.calculateVisualFocusDispersion(metrics);
 
-      console.log(`--- 字体大小 ${fontSize}px ---`);
-      console.log(`总行数: ${metrics.lines.length}`);
-      console.log(`孤行数: ${metrics.orphanCount}`);
-      console.log(`自动换行数: ${metrics.autoWrapCount}`);
-      console.log(`标点违规数: ${metrics.punctuationViolations}`);
-      console.log(`文本区域: ${metrics.totalWidth.toFixed(0)}x${metrics.totalHeight.toFixed(0)}px`);
-      console.log(`各指标评分:`);
-      console.log(`  r1(自动换行): ${r1.toFixed(4)} * ${this.config.weights.r1} = ${(r1 * this.config.weights.r1).toFixed(4)}`);
-      console.log(`  r2(孤行): ${r2.toFixed(4)} * ${this.config.weights.r2} = ${(r2 * this.config.weights.r2).toFixed(4)}`);
-      console.log(`  r3(行宽不均): ${r3.toFixed(4)} * ${this.config.weights.r3} = ${(r3 * this.config.weights.r3).toFixed(4)}`);
-      console.log(`  r4(长宽比): ${r4.toFixed(4)} * ${this.config.weights.r4} = ${(r4 * this.config.weights.r4).toFixed(4)}`);
-      console.log(`  r5(空间利用): ${r5.toFixed(4)} * ${this.config.weights.r5} = ${(r5 * this.config.weights.r5).toFixed(4)}`);
-      console.log(`  r6(标点位置): ${r6.toFixed(4)} * ${this.config.weights.r6} = ${(r6 * this.config.weights.r6).toFixed(4)}`);
-      console.log(`  r7(密度均匀): ${r7.toFixed(4)} * ${this.config.weights.r7} = ${(r7 * this.config.weights.r7).toFixed(4)}`);
-      console.log(`  r9(焦点分散): ${r9.toFixed(4)} * ${this.config.weights.r9} = ${(r9 * this.config.weights.r9).toFixed(4)}`);
-      console.log(`综合评分: ${score.toFixed(4)}`);
+      console.debug(`--- 字体大小 ${fontSize}px ---`);
+      console.debug(`总行数: ${metrics.lines.length}`);
+      console.debug(`孤行数: ${metrics.orphanCount}`);
+      console.debug(`自动换行数: ${metrics.autoWrapCount}`);
+      console.debug(`标点违规数: ${metrics.punctuationViolations}`);
+      console.debug(`文本区域: ${metrics.totalWidth.toFixed(0)}x${metrics.totalHeight.toFixed(0)}px`);
+      console.debug(`各指标评分:`);
+      console.debug(`  r1(自动换行): ${r1.toFixed(4)} * ${this.config.weights.r1} = ${(r1 * this.config.weights.r1).toFixed(4)}`);
+      console.debug(`  r2(孤行): ${r2.toFixed(4)} * ${this.config.weights.r2} = ${(r2 * this.config.weights.r2).toFixed(4)}`);
+      console.debug(`  r3(行宽不均): ${r3.toFixed(4)} * ${this.config.weights.r3} = ${(r3 * this.config.weights.r3).toFixed(4)}`);
+      console.debug(`  r4(长宽比): ${r4.toFixed(4)} * ${this.config.weights.r4} = ${(r4 * this.config.weights.r4).toFixed(4)}`);
+      console.debug(`  r5(空间利用): ${r5.toFixed(4)} * ${this.config.weights.r5} = ${(r5 * this.config.weights.r5).toFixed(4)}`);
+      console.debug(`  r6(标点位置): ${r6.toFixed(4)} * ${this.config.weights.r6} = ${(r6 * this.config.weights.r6).toFixed(4)}`);
+      console.debug(`  r7(密度均匀): ${r7.toFixed(4)} * ${this.config.weights.r7} = ${(r7 * this.config.weights.r7).toFixed(4)}`);
+      console.debug(`  r9(焦点分散): ${r9.toFixed(4)} * ${this.config.weights.r9} = ${(r9 * this.config.weights.r9).toFixed(4)}`);
+      console.debug(`综合评分: ${score.toFixed(4)}`);
 
       // 输出每行的详细信息
       metrics.lines.forEach((line: LineInfo, index: number) => {
-        console.log(`行${index + 1}: "${line.text}" (宽度:${line.width.toFixed(1)}px, 字符数:${line.characterCount}, 孤行:${line.isOrphan}, 自动换行:${line.isAutoWrapped})`);
+        console.debug(`行${index + 1}: "${line.text}" (宽度:${line.width.toFixed(1)}px, 字符数:${line.characterCount}, 孤行:${line.isOrphan}, 自动换行:${line.isAutoWrapped})`);
       });
 
       if (score < bestScore) {
@@ -114,18 +114,18 @@ export class TextLayoutService {
           lines: metrics.lines.map(line => line.text)
         };
 
-        console.log(`✓ 新的最佳结果! 字体大小: ${fontSize}px, 评分: ${score.toFixed(4)}`);
+        console.debug(`✓ 新的最佳结果! 字体大小: ${fontSize}px, 评分: ${score.toFixed(4)}`);
       }
     }
 
-    console.log(`=== 搜索完成 ===`);
+    console.debug(`=== 搜索完成 ===`);
     if (bestResult) {
       // 为了进一步确保能消除孤行，将 fontSize 减小一点。
       if (bestResult.fontSize > minSize) {
         bestResult.fontSize -= 1;
       }
-      console.log(`最终结果 - 字体大小: ${bestResult.fontSize}px, 行数: ${bestResult.lines.length}`);
-      console.log(`最终文本:\n${bestResult.text}`);
+      console.debug(`最终结果 - 字体大小: ${bestResult.fontSize}px, 行数: ${bestResult.lines.length}`);
+      console.debug(`最终文本:\n${bestResult.text}`);
     }
 
     return bestResult || {
@@ -168,20 +168,20 @@ export class TextLayoutService {
 
   // 核心文本测量方法
   private measureText(text: string, fontSize: number, containerWidth: number): TextLayoutMetrics {
-    console.log(`>>> measureText开始: 字体${fontSize}px, 容器宽度${containerWidth}px`);
-    console.log(`原始文本: "${text}"`);
+    console.debug(`>>> measureText开始: 字体${fontSize}px, 容器宽度${containerWidth}px`);
+    console.debug(`原始文本: "${text}"`);
 
     // 1. 首先应用强制标点换行逻辑，获取原始行数
     const punctuationFormatted = TextUtils.applySimpleTextFormatting(text);
 
-    console.log(`标点换行后: "${punctuationFormatted}"`);
+    console.debug(`标点换行后: "${punctuationFormatted}"`);
 
     const originalLines: string[] = punctuationFormatted.split('\n').filter((line: string) => line.trim().length > 0);
     const originalLineCount: number = originalLines.length;
 
-    console.log(`原始行数: ${originalLineCount}`);
+    console.debug(`原始行数: ${originalLineCount}`);
     originalLines.forEach((line: string, index: number) => {
-      console.log(`原始行${index + 1}: "${line}"`);
+      console.debug(`原始行${index + 1}: "${line}"`);
     });
 
     // 2. 对每一行进行智能换行处理
@@ -243,7 +243,7 @@ export class TextLayoutService {
   private wrapSingleLine(text: string, fontSize: number, maxWidth: number): string[] {
     if (!text || text.trim().length === 0) return [];
 
-    console.log(`>>> wrapSingleLine开始: "${text}", 字体${fontSize}px, 最大宽度${maxWidth}px`);
+    console.debug(`>>> wrapSingleLine开始: "${text}", 字体${fontSize}px, 最大宽度${maxWidth}px`);
 
     const lines: string[] = [];
     let currentLine = '';
@@ -258,17 +258,17 @@ export class TextLayoutService {
       const testLine = currentLine + char;
       const lineWidth = TextUtils.measureTextWidthCore(testLine, fontSize);
 
-      console.log(`字符'${char}': 测试行"${testLine}" 宽度${lineWidth.toFixed(1)}px, 最大宽度${maxWidth}px`);
+      console.debug(`字符'${char}': 测试行"${testLine}" 宽度${lineWidth.toFixed(1)}px, 最大宽度${maxWidth}px`);
 
       if (lineWidth > maxWidth && currentLine.length > 0) {
-        console.log(`需要换行! 当前行"${currentLine}" 宽度超限`);
+        console.debug(`需要换行! 当前行"${currentLine}" 宽度超限`);
         // 需要换行，检查换行规则
         const breakResult = this.findOptimalBreakPointNew(
           text, currentLine, i, fontSize, maxWidth
         );
 
         lines.push(breakResult.line);
-        console.log(`添加行: "${breakResult.line}"`);
+        console.debug(`添加行: "${breakResult.line}"`);
         currentLine = '';
         i = breakResult.nextIndex;
         continue;
@@ -280,10 +280,10 @@ export class TextLayoutService {
 
     if (currentLine.length > 0) {
       lines.push(currentLine);
-      console.log(`添加最后一行: "${currentLine}"`);
+      console.debug(`添加最后一行: "${currentLine}"`);
     }
 
-    console.log(`<<< wrapSingleLine完成: 总共${lines.length}行`);
+    console.debug(`<<< wrapSingleLine完成: 总共${lines.length}行`);
     return lines.length > 0 ? lines : [text];
   }
 
@@ -368,7 +368,7 @@ export class TextLayoutService {
     const effectiveLength = line.replace(/[，。！？；：、（）【】「」『』《》\"'\"'…]/g, '').length;
     const isOrphan = effectiveLength > 0 && effectiveLength < 3;
     if (isOrphan) {
-      console.log(`检测到孤行: "${line}" (有效字符数: ${effectiveLength})`);
+      console.debug(`检测到孤行: "${line}" (有效字符数: ${effectiveLength})`);
     }
     return isOrphan;
   }

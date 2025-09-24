@@ -1,6 +1,7 @@
 import { ScheduleConfig, WallpaperConfig, SelectionAlgorithm } from '../common/ScheduleConfig';
 import { QuoteData, QuoteSource } from '../common/QuoteData';
 import { router, promptAction } from '@kit.ArkUI';
+import common from '@ohos.app.ability.common';
 
 // 设置项类型枚举
 enum SettingType {
@@ -55,6 +56,17 @@ struct Settings {
   @State settingGroups: SettingGroup[] = [];
   @State showDialog: boolean = false;
   @State currentDialogItem: SettingItem | null = null;
+  @State hasChanges: boolean = false;
+
+  // 保存原始配置用于比较
+  private originalConfig: WallpaperConfig = {
+    selectionAlgorithm: SelectionAlgorithm.SMART,
+    autoOptimizeFont: true,
+    autoOptimizeBackground: true,
+    enableSeasonalAdjustment: true,
+    enableWeatherAdjustment: false
+  };
+  private originalQuoteSource: QuoteSource = QuoteSource.MAOZEDONG;
 
   async aboutToAppear() {
     await this.loadConfig();
@@ -67,6 +79,14 @@ struct Settings {
       const savedConfig = await ScheduleConfig.getConfig();
       if (savedConfig) {
         this.config = savedConfig;
+        // 保存原始配置
+        this.originalConfig = {
+          selectionAlgorithm: savedConfig.selectionAlgorithm,
+          autoOptimizeFont: savedConfig.autoOptimizeFont,
+          autoOptimizeBackground: savedConfig.autoOptimizeBackground,
+          enableSeasonalAdjustment: savedConfig.enableSeasonalAdjustment,
+          enableWeatherAdjustment: savedConfig.enableWeatherAdjustment
+        };
       }
     } catch (error) {
       console.error('Failed to load config:', error);
@@ -75,8 +95,12 @@ struct Settings {
 
   async loadQuoteSource() {
     try {
-      await QuoteData.loadQuoteSource();
+      const context = getContext(this) as common.UIAbilityContext;
+      await QuoteData.loadQuoteSource(context);
       this.currentQuoteSource = QuoteData.getQuoteSource();
+      // 保存原始值
+      this.originalQuoteSource = this.currentQuoteSource;
+      console.log('设置页面加载的名言来源:', this.currentQuoteSource);
     } catch (error) {
       console.error('Failed to load quote source:', error);
     }
@@ -93,11 +117,68 @@ struct Settings {
 
   async saveQuoteSource(source: QuoteSource) {
     try {
-      await QuoteData.saveQuoteSource(source);
+      const context = getContext(this) as common.UIAbilityContext;
+      await QuoteData.saveQuoteSource(source, context);
       this.currentQuoteSource = source;
       console.log('Quote source saved successfully:', source);
     } catch (error) {
       console.error('Failed to save quote source:', error);
+    }
+  }
+
+  checkForChanges() {
+    // 检查配置是否有变化
+    const configChanged =
+      this.config.selectionAlgorithm !== this.originalConfig.selectionAlgorithm ||
+      this.config.autoOptimizeFont !== this.originalConfig.autoOptimizeFont ||
+      this.config.autoOptimizeBackground !== this.originalConfig.autoOptimizeBackground ||
+      this.config.enableSeasonalAdjustment !== this.originalConfig.enableSeasonalAdjustment ||
+      this.config.enableWeatherAdjustment !== this.originalConfig.enableWeatherAdjustment;
+
+    // 检查名言源是否有变化
+    const quoteSourceChanged = this.currentQuoteSource !== this.originalQuoteSource;
+
+    this.hasChanges = configChanged || quoteSourceChanged;
+  }
+
+  async applyChanges() {
+    try {
+      // 检查名言来源是否变化
+      const quoteSourceChanged = this.currentQuoteSource !== this.originalQuoteSource;
+
+      await this.saveConfig();
+      await this.saveQuoteSource(this.currentQuoteSource);
+
+      // 更新原始值
+      this.originalConfig = {
+        selectionAlgorithm: this.config.selectionAlgorithm,
+        autoOptimizeFont: this.config.autoOptimizeFont,
+        autoOptimizeBackground: this.config.autoOptimizeBackground,
+        enableSeasonalAdjustment: this.config.enableSeasonalAdjustment,
+        enableWeatherAdjustment: this.config.enableWeatherAdjustment
+      };
+      this.originalQuoteSource = this.currentQuoteSource;
+
+      // 重置变更状态
+      this.hasChanges = false;
+
+      promptAction.showToast({
+        message: '设置已保存',
+        duration: 2000
+      });
+
+      // 如果名言来源变化了，存储标记
+      if (quoteSourceChanged) {
+        // 使用AppStorage存储标记，主界面会在onPageShow时检查
+        AppStorage.setOrCreate('quoteSourceChanged', true);
+        console.log('设置页面：名言来源已变化，设置标记为true');
+      }
+    } catch (error) {
+      console.error('Failed to apply changes:', error);
+      promptAction.showToast({
+        message: '保存失败',
+        duration: 2000
+      });
     }
   }
 
@@ -117,8 +198,9 @@ struct Settings {
               { label: '毛选摘抄', value: QuoteSource.MAOZEDONG } as OptionItem
             ],
             onChangeString: (value: string) => {
-              this.saveQuoteSource(value as QuoteSource);
+              this.currentQuoteSource = value as QuoteSource;
               this.updateSettingValue('quote_source', value);
+              this.checkForChanges();
             }
           },
           {
@@ -134,8 +216,8 @@ struct Settings {
             ],
             onChangeString: (value: string) => {
               this.config.selectionAlgorithm = value as SelectionAlgorithm;
-              this.saveConfig();
               this.updateSettingValue('selection_algorithm', value);
+              this.checkForChanges();
             }
           }
         ]
@@ -151,8 +233,8 @@ struct Settings {
             value: this.config.autoOptimizeFont,
             onChangeBoolean: (value: boolean) => {
               this.config.autoOptimizeFont = value;
-              this.saveConfig();
               this.updateSettingValue('auto_font', value);
+              this.checkForChanges();
             }
           },
           {
@@ -163,8 +245,8 @@ struct Settings {
             value: this.config.autoOptimizeBackground,
             onChangeBoolean: (value: boolean) => {
               this.config.autoOptimizeBackground = value;
-              this.saveConfig();
               this.updateSettingValue('auto_background', value);
+              this.checkForChanges();
             }
           }
         ]
@@ -180,8 +262,8 @@ struct Settings {
             value: this.config.enableSeasonalAdjustment,
             onChangeBoolean: (value: boolean) => {
               this.config.enableSeasonalAdjustment = value;
-              this.saveConfig();
               this.updateSettingValue('seasonal', value);
+              this.checkForChanges();
             }
           },
           {
@@ -192,8 +274,8 @@ struct Settings {
             value: this.config.enableWeatherAdjustment,
             onChangeBoolean: (value: boolean) => {
               this.config.enableWeatherAdjustment = value;
-              this.saveConfig();
               this.updateSettingValue('weather', value);
+              this.checkForChanges();
             }
           }
         ]
@@ -232,28 +314,83 @@ struct Settings {
       Column() {
         // 标题栏
         Row() {
-        Button() {
-          Text('‹')
-            .fontSize(24)
-            .fontColor('#333333')
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor('#F5F5F5')
-        .borderRadius(20)
-        .onClick(() => {
-          router.back();
-        })
+          Button() {
+            Text('‹')
+              .fontSize(24)
+              .fontColor('#333333')
+          }
+          .width(40)
+          .height(40)
+          .backgroundColor('#F5F5F5')
+          .borderRadius(20)
+          .onClick(() => {
+            if (this.hasChanges) {
+              // 如果有未保存的更改，提示用户
+              AlertDialog.show({
+                title: '放弃修改',
+                message: '是否放弃修改配置？',
+                autoCancel: true,
+                alignment: DialogAlignment.Center,
+                primaryButton: {
+                  value: '否',
+                  action: () => {
+                    // 点击否，留在设置页面
+                  }
+                },
+                secondaryButton: {
+                  value: '是',
+                  action: () => {
+                    router.back();
+                  }
+                }
+              });
+            } else {
+              router.back();
+            }
+          })
 
-        Text('设置')
-          .fontSize(20)
-          .fontWeight(FontWeight.Medium)
-          .layoutWeight(1)
-          .margin({ left: 16 })
-      }
-      .width('100%')
-      .height(56)
-      .padding({ left: 12, right: 12 })
+          Blank()
+
+          Text('设置')
+            .fontSize(20)
+            .fontWeight(FontWeight.Medium)
+            .textAlign(TextAlign.Center)
+
+          Blank()
+
+          Button('应用')
+            .fontSize(14)
+            .fontColor(this.hasChanges ? '#FFFFFF' : '#999999')
+            .backgroundColor(this.hasChanges ? '#4A90E2' : '#E5E5E5')
+            .enabled(this.hasChanges)
+            .height(36)
+            .padding({ left: 16, right: 16 })
+            .onClick(() => {
+              if (this.hasChanges) {
+                AlertDialog.show({
+                  title: '应用',
+                  message: '是否确认应用配置？',
+                  autoCancel: true,
+                  alignment: DialogAlignment.Center,
+                  primaryButton: {
+                    value: '否',
+                    action: () => {
+                      // 点击否，什么都不做
+                    }
+                  },
+                  secondaryButton: {
+                    value: '是',
+                    action: () => {
+                      this.applyChanges();
+                    }
+                  }
+                });
+              }
+            })
+        }
+        .width('100%')
+        .height(56)
+        .padding({ left: 12, right: 12 })
 
       // 设置列表
       List({ space: 0 }) {
