@@ -63,6 +63,20 @@ interface TextColors {
   midnight: string;
 }
 
+// HSL颜色空间接口
+interface HSLColor {
+  h: number;  // 色调 (0-1)
+  s: number;  // 饱和度 (0-1)
+  l: number;  // 明度 (0-1)
+}
+
+// RGB颜色空间接口
+interface RGBColor {
+  r: number;  // 红色分量 (0-255)
+  g: number;  // 绿色分量 (0-255)
+  b: number;  // 蓝色分量 (0-255)
+}
+
 // 颜色信息类型
 class ColorInfo {
   color: string = '';
@@ -384,8 +398,14 @@ export class CardService {
     // 如果quote有建议的背景色，优先使用；否则随机选择
     let backgroundColor: string;
     if (quote.bg_color) {
-      backgroundColor = quote.bg_color;
-      console.debug(`使用建议背景色: ${backgroundColor}, 理由: ${quote.bg_color_reason || '无'}`);
+      const originalColor = quote.bg_color;
+      backgroundColor = CardService.adjustBrightnessIfNeeded(originalColor);
+
+      if (backgroundColor !== originalColor) {
+        console.debug(`自动调暗背景色: ${originalColor} -> ${backgroundColor}, 理由: ${quote.bg_color_reason || '无'}`);
+      } else {
+        console.debug(`使用建议背景色: ${backgroundColor}, 理由: ${quote.bg_color_reason || '无'}`);
+      }
     } else {
       backgroundColor = CardService.selectBackgroundColor();
       console.debug(`使用随机背景色: ${backgroundColor}`);
@@ -496,6 +516,106 @@ export class CardService {
     if (textLength <= 50) return 24;
     if (textLength <= 70) return 20;
     return 18;
+  }
+
+  /**
+   * RGB转HSL
+   */
+  private static rgbToHsl(r: number, g: number, b: number): HSLColor {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+
+    if (max === min) {
+      h = s = 0; // 灰色
+    } else {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+
+    return {h, s, l};
+  }
+
+  /**
+   * HSL转RGB
+   */
+  private static hslToRgb(h: number, s: number, l: number): RGBColor {
+    let r: number, g: number, b: number;
+
+    if (s === 0) {
+      r = g = b = l; // 灰色
+    } else {
+      const hue2rgb = (p: number, q: number, t: number) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+
+    return {
+      r: Math.round(r * 255),
+      g: Math.round(g * 255),
+      b: Math.round(b * 255)
+    };
+  }
+
+  /**
+   * 调整颜色亮度至目标范围
+   * 如果HSL明度超过0.15，则线性映射到[0.15, 0.2]范围内
+   */
+  private static adjustBrightnessIfNeeded(hexColor: string): string {
+    // 提取RGB分量
+    const hex = hexColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+
+    // 转换为HSL
+    const hsl = CardService.rgbToHsl(r, g, b);
+    const originalL = hsl.l;
+
+    // 如果明度超过0.15，则调整
+    if (originalL > 0.15) {
+      // 线性映射参数
+      const minThresholdL = 0.15;  // 输入的最小阈值
+      const maxThresholdL = 1.0;   // 输入的最大阈值
+      const minTargetL = 0.15;     // 输出的最小值
+      const maxTargetL = 0.2;      // 输出的最大值
+
+      // 线性映射公式
+      const targetL = minTargetL + (originalL - minThresholdL) / (maxThresholdL - minThresholdL) * (maxTargetL - minTargetL);
+      hsl.l = targetL;
+
+      // 转回RGB
+      const newRgb = CardService.hslToRgb(hsl.h, hsl.s, hsl.l);
+
+      // 转回hex
+      const newHex = `#${newRgb.r.toString(16).padStart(2, '0')}${newRgb.g.toString(16).padStart(2, '0')}${newRgb.b.toString(16).padStart(2, '0')}`;
+
+      return newHex;
+    }
+
+    return hexColor; // 不需要调整
   }
 
   // 生成卡片
