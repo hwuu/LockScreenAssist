@@ -398,17 +398,18 @@ export class CardService {
     // 如果quote有建议的背景色，优先使用；否则随机选择
     let backgroundColor: string;
     if (quote.bg_color) {
-      const originalColor = quote.bg_color;
-      backgroundColor = CardService.adjustBrightnessIfNeeded(originalColor);
-
-      if (backgroundColor !== originalColor) {
-        console.debug(`自动调暗背景色: ${originalColor} -> ${backgroundColor}, 理由: ${quote.bg_color_reason || '无'}`);
-      } else {
-        console.debug(`使用建议背景色: ${backgroundColor}, 理由: ${quote.bg_color_reason || '无'}`);
-      }
+      backgroundColor = quote.bg_color;
+      console.debug(`使用建议背景色: ${quote.bg_color}, 理由: ${quote.bg_color_reason || '无'}`);
     } else {
       backgroundColor = CardService.selectBackgroundColor();
       console.debug(`使用随机背景色: ${backgroundColor}`);
+    }
+
+    // 自动调暗背景色
+    const adjustedBackgroundColor = CardService.adjustBrightnessIfNeeded(backgroundColor);
+    if (adjustedBackgroundColor !== backgroundColor) {
+      console.debug(`自动调暗背景色: ${backgroundColor} -> ${adjustedBackgroundColor}`);
+      backgroundColor = adjustedBackgroundColor;
     }
 
     const textColor = CardService.calculateOptimalTextColor(backgroundColor);

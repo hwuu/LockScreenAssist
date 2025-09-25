@@ -26,6 +26,7 @@
 ### 🎨 自动优化
 - **字体大小自适应**：根据名言长度自动调整字体大小，确保显示完整
 - **背景色彩优化**：根据名言类别、季节、天气自动选择最佳配色方案
+- **智能亮度调节**：自动检测背景色亮度，过亮的颜色自动调暗至合适范围，确保视觉舒适度
 - **渐变背景**：支持美观的渐变色背景，提升视觉效果
 - **文字对比度**：自动调整文字颜色确保良好的可读性
 
@@ -148,12 +149,17 @@
 
 应用内置丰富的名言警句数据库，包含：
 
+### 数据来源
+- **《诗经》名句**：中华古典文学瑰宝，包含爱情、自然、友谊等多种主题
+- **唐诗精选**：172条唐诗名句，涵盖李白、杜甫、王维等名家作品，每条都配有精心设计的背景色
+- **毛泽东语录**：1200+条毛泽东选集经典摘抄，涵盖革命、战略、人民、学习等多个主题
+
 ### 分类
+- **思乡类**：表达思念故乡的诗词名句
+- **爱情类**：描写爱情和相思的经典语句
+- **哲理类**：富含人生智慧的格言警句
+- **自然类**：描写自然景色的优美诗句
 - **励志类**：激励人心的名言，适合早晨和工作时间
-- **智慧类**：充满智慧的格言，适合学习和思考
-- **诗词类**：优美的诗词名句，适合休闲时光
-- **哲理类**：富含哲理的句子，适合深度思考
-- **毛选摘抄**：200+条毛泽东选集经典摘抄，涵盖革命、战略、人民、学习等多个主题
 
 ### 季节适配
 - **春**：描写春天的诗词和积极向上的名言
@@ -170,17 +176,18 @@
 
 ### 核心模块
 1. **QuoteData**：名言数据管理
-2. **QuoteDataSource**：LazyForEach数据源，支持大量数据懒加载
+2. **CardViewerDataSource**：卡片展示数据源，支持大量数据懒加载
 3. **ScheduleConfig**：定时任务配置
 4. **QuoteSelectionService**：名言选择服务
-5. **WallpaperService**：壁纸生成服务
+5. **CardService**：卡片样式生成服务，支持智能亮度调节和HSL色彩空间转换
 6. **AutoPlayService**：自动播放状态机管理（7状态精细控制）
 7. **HintAnimationService**：提示动画服务（呼吸灯效果）
-8. **WallpaperUIService**：壁纸UI更新服务
-9. **QuotePageService**：名言页面管理服务
-10. **PreGeneratedWallpaperService**：壁纸配置预生成服务
-11. **BackgroundLifecycleService**：后台生命周期管理服务
-12. **LinearProgressComponent**：线性进度条组件
+8. **AppInitializationService**：应用初始化服务
+9. **BackgroundLifecycleService**：后台生命周期管理服务
+10. **TextLayoutService**：文本布局优化服务
+11. **QuoteDataLoaderService**：名言数据加载服务
+12. **CardViewerComponent**：卡片展示组件
+13. **LinearProgressComponent**：线性进度条组件
 
 ### 设计模式
 - **服务层架构**：清晰的分层设计
@@ -202,23 +209,24 @@
 entry/src/main/ets/
 ├── common/                    # 公共模块
 │   ├── QuoteData.ets         # 名言数据管理
-│   ├── QuoteDataSource.ets   # LazyForEach数据源
+│   ├── CardViewerDataSource.ets # 卡片展示数据源
 │   ├── ScheduleConfig.ets    # 定时任务配置
 │   ├── UIConstants.ets       # UI常量定义
-│   └── TextLayoutTypes.ets   # 文本布局类型定义
+│   ├── TextLayoutTypes.ets   # 文本布局类型定义
+│   ├── TextUtils.ets         # 文本工具函数
+│   └── ServiceTypes.ets      # 服务类型定义
 ├── services/                  # 服务层
 │   ├── QuoteSelectionService.ets  # 智能名言选择服务
-│   ├── WallpaperService.ets      # 壁纸生成与应用服务
+│   ├── CardService.ets           # 卡片样式生成服务（含HSL亮度调节）
 │   ├── AutoPlayService.ets       # 自动播放状态机管理
 │   ├── HintAnimationService.ets  # 提示动画服务
-│   ├── WallpaperUIService.ets    # 壁纸UI更新服务
-│   ├── QuotePageService.ets      # 名言页面管理服务
 │   ├── AppInitializationService.ets # 应用初始化服务
-│   ├── PreGeneratedWallpaperService.ets # 壁纸预生成服务
-│   └── BackgroundLifecycleService.ets # 后台生命周期管理
+│   ├── BackgroundLifecycleService.ets # 后台生命周期管理
+│   ├── TextLayoutService.ets     # 文本布局优化服务
+│   └── QuoteDataLoaderService.ets # 名言数据加载服务
 ├── components/               # UI组件
 │   ├── TopBarComponent.ets  # 顶部工具栏组件（包含设置和播放按钮）
-│   ├── QuoteSwiperComponent.ets # 名言滑动组件
+│   ├── CardViewerComponent.ets # 卡片展示组件
 │   ├── HintTextComponent.ets # 提示文本组件（呼吸灯效果）
 │   ├── LoadingOverlayComponent.ets # 加载遮罩组件
 │   ├── LinearProgressComponent.ets # 线性进度条组件
@@ -240,9 +248,9 @@ entry/src/main/ets/
 - **code-linter.json5**：代码质量检查配置
 
 ### 扩展开发
-1. **添加新名言**：在 `QuoteData.ets` 中添加新的名言数据
+1. **添加新名言**：在 `QuoteDataLoaderService.ets` 中添加新的名言数据源
 2. **自定义算法**：在 `QuoteSelectionService.ets` 中实现新的选择算法
-3. **样式定制**：在 `WallpaperService.ets` 中修改样式生成逻辑
+3. **样式定制**：在 `CardService.ets` 中修改卡片样式生成逻辑
 4. **新增页面**：在 `pages/` 目录下添加新的功能页面
 5. **数据管理**：扩展 `ScheduleConfig.ets` 支持新的配置选项
 
@@ -281,10 +289,10 @@ A: 从HarmonyOS API 9开始，华为官方限制三方应用直接设置系统�
 A: 开发者可以通过修改 `QuoteData.ets` 文件来添加新的名言数据，按照现有的数据结构格式添加即可。
 
 ### Q: 壁纸文字显示不完整怎么办？
-A: 检查 `WallpaperService.ets` 中的字体大小自适应逻辑，可以调整字体大小计算算法或最小字体大小限制。
+A: 检查 `CardService.ets` 中的字体大小自适应逻辑，可以调整字体大小计算算法或最小字体大小限制。
 
 ### Q: 如何修改壁纸样式？
-A: 在 `WallpaperService.ets` 中可以修改背景色彩、渐变效果、文字排版等样式参数。
+A: 在 `CardService.ets` 中可以修改背景色彩、HSL亮度调节、文字排版等样式参数。
 
 ### Q: 构建失败怎么办？
 A:
@@ -325,6 +333,12 @@ A:
   - 初始从纯黑背景平滑淡入
   - 消除不必要的淡出淡入动画
 - ✅ **设计文档**：新增 DESIGN.md 完整状态转移图
+- ✅ **智能亮度调节**：新增背景色自动亮度调节功能
+  - 基于HSL色彩空间的精确亮度计算
+  - 过亮背景色（明度>0.15）自动调暗至[0.15-0.2]范围
+  - 线性映射算法确保颜色过渡自然
+  - 支持172条唐诗名言的背景色智能适配
+  - 完整的ArkTS类型安全实现
 
 ### v2.2.0 - 2025年1月
 - ✅ **性能优化**：实现100个壁纸配置预生成，启动时一次性计算完成
@@ -333,7 +347,7 @@ A:
   - 10秒后自动暂停播放（如果正在播放）
   - 返回前台智能恢复呼吸灯（仅在非播放状态）
 - ✅ **架构改进**：
-  - 新增 `PreGeneratedWallpaperService` 预生成服务
+  - 优化卡片预生成逻辑
   - 新增 `BackgroundLifecycleService` 后台生命周期管理
   - 优化全局事件通信机制
 
