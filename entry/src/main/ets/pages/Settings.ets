@@ -1,35 +1,77 @@
-import { ScheduleConfig, WallpaperConfig, SelectionAlgorithm } from '../common/ScheduleConfig';
+import { ScheduleConfig, CardConfig, SelectionAlgorithm } from '../common/ScheduleConfig';
 import { QuoteData, QuoteSource } from '../common/QuoteData';
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
+import common from '@ohos.app.ability.common';
 
-// 定义选项接口
-interface OptionItem {
-  label: string;
-  value: SelectionAlgorithm;
+// 设置项类型枚举
+enum SettingType {
+  TOGGLE,
+  RADIO,
+  NAVIGATION
 }
 
-// 名言源选项接口
-interface QuoteSourceItem {
+// 选项接口
+interface OptionItem {
   label: string;
-  value: QuoteSource;
+  value: string;
+}
+
+// 设置项接口
+interface SettingItem {
+  id: string;
+  title: string;
+  description?: string;
+  type: SettingType;
+  value?: boolean | string;
+  options?: OptionItem[];
+  onClick?: () => void;
+  onChangeBoolean?: (value: boolean) => void;
+  onChangeString?: (value: string) => void;
+}
+
+// 设置组接口
+interface SettingGroup {
+  title: string;
+  items: SettingItem[];
+}
+
+// ActionSheet选项接口
+interface SheetOption {
+  title: string;
+  action: () => void;
 }
 
 @Entry
 @Component
 struct Settings {
-  @State config: WallpaperConfig = {
+  @State config: CardConfig = {
+    selectionAlgorithm: SelectionAlgorithm.SMART,
+    autoOptimizeFont: true,
+    autoOptimizeBackground: true,
+    enableSeasonalAdjustment: false,
+    enableWeatherAdjustment: false
+  };
+
+  @State currentQuoteSource: QuoteSource = QuoteSource.MAOZEDONG;
+  @State settingGroups: SettingGroup[] = [];
+  @State showDialog: boolean = false;
+  @State currentDialogItem: SettingItem | null = null;
+  @State hasChanges: boolean = false;
+
+  // 保存原始配置用于比较
+  private originalConfig: CardConfig = {
     selectionAlgorithm: SelectionAlgorithm.SMART,
     autoOptimizeFont: true,
     autoOptimizeBackground: true,
     enableSeasonalAdjustment: true,
     enableWeatherAdjustment: false
   };
-
-  @State currentQuoteSource: QuoteSource = QuoteSource.MAOZEDONG;
+  private originalQuoteSource: QuoteSource = QuoteSource.MAOZEDONG;
 
   async aboutToAppear() {
     await this.loadConfig();
     await this.loadQuoteSource();
+    this.initSettingGroups();
   }
 
   async loadConfig() {
@@ -37,6 +79,14 @@ struct Settings {
       const savedConfig = await ScheduleConfig.getConfig();
       if (savedConfig) {
         this.config = savedConfig;
+        // 保存原始配置
+        this.originalConfig = {
+          selectionAlgorithm: savedConfig.selectionAlgorithm,
+          autoOptimizeFont: savedConfig.autoOptimizeFont,
+          autoOptimizeBackground: savedConfig.autoOptimizeBackground,
+          enableSeasonalAdjustment: savedConfig.enableSeasonalAdjustment,
+          enableWeatherAdjustment: savedConfig.enableWeatherAdjustment
+        };
       }
     } catch (error) {
       console.error('Failed to load config:', error);
@@ -45,8 +95,12 @@ struct Settings {
 
   async loadQuoteSource() {
     try {
-      await QuoteData.loadQuoteSource();
+      const context = getContext(this) as common.UIAbilityContext;
+      await QuoteData.loadQuoteSource(context);
       this.currentQuoteSource = QuoteData.getQuoteSource();
+      // 保存原始值
+      this.originalQuoteSource = this.currentQuoteSource;
+      console.log('设置页面加载的名言来源:', this.currentQuoteSource);
     } catch (error) {
       console.error('Failed to load quote source:', error);
     }
@@ -63,7 +117,8 @@ struct Settings {
 
   async saveQuoteSource(source: QuoteSource) {
     try {
-      await QuoteData.saveQuoteSource(source);
+      const context = getContext(this) as common.UIAbilityContext;
+      await QuoteData.saveQuoteSource(source, context);
       this.currentQuoteSource = source;
       console.log('Quote source saved successfully:', source);
     } catch (error) {
@@ -71,259 +126,441 @@ struct Settings {
     }
   }
 
+  checkForChanges() {
+    // 检查配置是否有变化
+    const configChanged =
+      this.config.selectionAlgorithm !== this.originalConfig.selectionAlgorithm ||
+      this.config.autoOptimizeFont !== this.originalConfig.autoOptimizeFont ||
+      this.config.autoOptimizeBackground !== this.originalConfig.autoOptimizeBackground ||
+      this.config.enableSeasonalAdjustment !== this.originalConfig.enableSeasonalAdjustment ||
+      this.config.enableWeatherAdjustment !== this.originalConfig.enableWeatherAdjustment;
+
+    // 检查名言源是否有变化
+    const quoteSourceChanged = this.currentQuoteSource !== this.originalQuoteSource;
+
+    this.hasChanges = configChanged || quoteSourceChanged;
+  }
+
+  async applyChanges() {
+    try {
+      // 检查名言来源是否变化
+      const quoteSourceChanged = this.currentQuoteSource !== this.originalQuoteSource;
+
+      await this.saveConfig();
+      await this.saveQuoteSource(this.currentQuoteSource);
+
+      // 更新原始值
+      this.originalConfig = {
+        selectionAlgorithm: this.config.selectionAlgorithm,
+        autoOptimizeFont: this.config.autoOptimizeFont,
+        autoOptimizeBackground: this.config.autoOptimizeBackground,
+        enableSeasonalAdjustment: this.config.enableSeasonalAdjustment,
+        enableWeatherAdjustment: this.config.enableWeatherAdjustment
+      };
+      this.originalQuoteSource = this.currentQuoteSource;
+
+      // 重置变更状态
+      this.hasChanges = false;
+
+      promptAction.showToast({
+        message: '设置已保存',
+        duration: 2000
+      });
+
+      // 如果名言来源变化了，存储标记
+      if (quoteSourceChanged) {
+        // 使用AppStorage存储标记，主界面会在onPageShow时检查
+        AppStorage.setOrCreate('quoteSourceChanged', true);
+        console.log('设置页面：名言来源已变化，设置标记为true');
+      }
+
+      // 应用成功后直接返回主界面
+      setTimeout(() => {
+        router.back();
+      }, 500); // 短暂延迟让用户看到提示信息
+    } catch (error) {
+      console.error('Failed to apply changes:', error);
+      promptAction.showToast({
+        message: '保存失败',
+        duration: 2000
+      });
+    }
+  }
+
+  initSettingGroups() {
+    this.settingGroups = [
+      {
+        title: '名言设置',
+        items: [
+          {
+            id: 'quote_source',
+            title: '名言来源',
+            description: '选择名言的内容来源',
+            type: SettingType.RADIO,
+            value: this.currentQuoteSource,
+            options: [
+              { label: '毛选摘抄', value: QuoteSource.MAOZEDONG } as OptionItem,
+              { label: '诗经精选', value: QuoteSource.SHIJING } as OptionItem,
+              { label: '唐诗三百首', value: QuoteSource.TANGSHI } as OptionItem
+            ],
+            onChangeString: (value: string) => {
+              this.currentQuoteSource = value as QuoteSource;
+              this.updateSettingValue('quote_source', value);
+              this.checkForChanges();
+            }
+          }
+        ]
+      }
+    ];
+  }
+
+  updateSettingValue(id: string, value: boolean | string) {
+    this.settingGroups = this.settingGroups.map(group => {
+      const newGroup: SettingGroup = {
+        title: group.title,
+        items: group.items.map(item => {
+          if (item.id === id) {
+            const newItem: SettingItem = {
+              id: item.id,
+              title: item.title,
+              description: item.description,
+              type: item.type,
+              value: value,
+              options: item.options,
+              onClick: item.onClick,
+              onChangeBoolean: item.onChangeBoolean,
+              onChangeString: item.onChangeString
+            };
+            return newItem;
+          }
+          return item;
+        })
+      };
+      return newGroup;
+    });
+  }
+
   build() {
-    Column() {
-      // 标题栏
-      Row() {
-        Button() {
-          Text('←')
+    Stack() {
+      Column() {
+        // 标题栏
+        Row() {
+          Button() {
+            Text('‹')
+              .fontSize(24)
+              .fontColor('#333333')
+          }
+          .width(40)
+          .height(40)
+          .backgroundColor('#F5F5F5')
+          .borderRadius(20)
+          .onClick(() => {
+            if (this.hasChanges) {
+              // 如果有未保存的更改，提示用户
+              AlertDialog.show({
+                title: '放弃修改',
+                message: '是否放弃修改配置？',
+                autoCancel: true,
+                alignment: DialogAlignment.Center,
+                primaryButton: {
+                  value: '否',
+                  action: () => {
+                    // 点击否，留在设置页面
+                  }
+                },
+                secondaryButton: {
+                  value: '是',
+                  action: () => {
+                    router.back();
+                  }
+                }
+              });
+            } else {
+              router.back();
+            }
+          })
+
+          Blank()
+
+          Text('设置')
             .fontSize(20)
-            .fontColor('#666')
+            .fontWeight(FontWeight.Medium)
+            .textAlign(TextAlign.Center)
+
+          Blank()
+
+          Button('应用')
+            .fontSize(14)
+            .fontColor(this.hasChanges ? '#FFFFFF' : '#999999')
+            .backgroundColor(this.hasChanges ? '#4A90E2' : '#E5E5E5')
+            .enabled(this.hasChanges)
+            .height(36)
+            .padding({ left: 16, right: 16 })
+            .onClick(() => {
+              if (this.hasChanges) {
+                AlertDialog.show({
+                  title: '应用',
+                  message: '是否确认应用配置？',
+                  autoCancel: true,
+                  alignment: DialogAlignment.Center,
+                  primaryButton: {
+                    value: '否',
+                    action: () => {
+                      // 点击否，什么都不做
+                    }
+                  },
+                  secondaryButton: {
+                    value: '是',
+                    action: () => {
+                      this.applyChanges();
+                    }
+                  }
+                });
+              }
+            })
         }
-        .width(40)
-        .height(40)
-        .backgroundColor('#f5f5f5')
-        .borderRadius(20)
-        .onClick(() => {
-          router.back();
+        .width('100%')
+        .height(56)
+        .padding({ left: 12, right: 12 })
+
+      // 设置列表
+      List({ space: 0 }) {
+        ForEach(this.settingGroups, (group: SettingGroup, groupIndex: number) => {
+          ListItemGroup({ header: this.groupHeader(group.title) }) {
+            ForEach(group.items, (item: SettingItem, itemIndex: number) => {
+              ListItem() {
+                if (item.type === SettingType.TOGGLE) {
+                  this.buildToggleItem(item);
+                } else if (item.type === SettingType.RADIO) {
+                  this.buildRadioItem(item);
+                } else if (item.type === SettingType.NAVIGATION) {
+                  this.buildNavigationItem(item);
+                }
+              }
+              .height(item.description ? 72 : 56)
+              .backgroundColor('#FFFFFF')
+              .padding({ left: 12, right: 12 })
+            })
+          }
+          .divider({
+            strokeWidth: 0.5,
+            color: '#E5E5E5',
+            startMargin: 12,
+            endMargin: 12
+          })
         })
 
-        Text('设置')
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#2c3e50')
-          .margin({ left: 16 })
-
-        Blank()
-      }
-      .width('100%')
-      .height(60)
-      .padding({ left: 20, right: 20 })
-      .backgroundColor('#ffffff')
-
-      // 设置内容
-      Scroll() {
-        Column() {
-          // 名言来源选择
-          this.buildSettingSection(
-            '名言来源',
-            '选择名言的内容来源',
-            () => {
-              this.buildQuoteSourceRadioGroup(
-                '内容来源',
-                [
-                  { label: '诗经精选', value: QuoteSource.SHIJING } as QuoteSourceItem,
-                  { label: '毛选摘抄', value: QuoteSource.MAOZEDONG } as QuoteSourceItem
-                ] as QuoteSourceItem[],
-                this.currentQuoteSource,
-                (value: QuoteSource) => {
-                  this.saveQuoteSource(value);
-                }
-              )
-            }
-          )
-
-          // 名言选择算法
-          this.buildSettingSection(
-            '名言选择',
-            '选择名言的算法和偏好设置',
-            () => {
-              this.buildRadioGroup(
-                '选择算法',
-                [
-                  { label: '智能推荐', value: SelectionAlgorithm.SMART } as OptionItem,
-                  { label: '随机选择', value: SelectionAlgorithm.RANDOM } as OptionItem,
-                  { label: '顺序选择', value: SelectionAlgorithm.SEQUENTIAL } as OptionItem
-                ] as OptionItem[],
-                this.config.selectionAlgorithm,
-                (value: SelectionAlgorithm) => {
-                  this.config.selectionAlgorithm = value;
-                  this.saveConfig();
-                }
-              )
-            }
-          )
-
-          // 显示优化
-          this.buildSettingSection(
-            '显示优化',
-            '自动优化字体和背景颜色',
-            () => {
-              this.buildToggleItem(
-                '自动字体优化',
-                '根据文本长度自动调整字体大小',
-                this.config.autoOptimizeFont,
-                (value: boolean) => {
-                  this.config.autoOptimizeFont = value;
-                  this.saveConfig();
-                }
-              )
-
-              this.buildToggleItem(
-                '自动背景优化',
-                '根据内容智能选择背景颜色',
-                this.config.autoOptimizeBackground,
-                (value: boolean) => {
-                  this.config.autoOptimizeBackground = value;
-                  this.saveConfig();
-                }
-              )
-            }
-          )
-
-          // 环境适应
-          this.buildSettingSection(
-            '环境适应',
-            '根据季节和天气调整显示效果',
-            () => {
-              this.buildToggleItem(
-                '季节调整',
-                '根据当前季节调整配色方案',
-                this.config.enableSeasonalAdjustment,
-                (value: boolean) => {
-                  this.config.enableSeasonalAdjustment = value;
-                  this.saveConfig();
-                }
-              )
-
-              this.buildToggleItem(
-                '天气调整',
-                '根据天气情况调整显示效果',
-                this.config.enableWeatherAdjustment,
-                (value: boolean) => {
-                  this.config.enableWeatherAdjustment = value;
-                  this.saveConfig();
-                }
-              )
-            }
-          )
+        // 底部空间
+        ListItem() {
+          Column().height(20)
         }
-        .padding({ left: 20, right: 20 })
-      }
-      .layoutWeight(1)
-      .backgroundColor('#f8f9fa')
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor('#f8f9fa')
-  }
-
-  @Builder
-  buildSettingSection(title: string, description: string, content: () => void) {
-    Column() {
-      Column() {
-        Text(title)
-          .fontSize(18)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#2c3e50')
-          .alignSelf(ItemAlign.Start)
-
-        Text(description)
-          .fontSize(14)
-          .fontColor('#7f8c8d')
-          .alignSelf(ItemAlign.Start)
-          .margin({ top: 4, bottom: 16 })
-
-        //content()
       }
       .width('100%')
-      .padding(20)
-      .backgroundColor('#ffffff')
-      .borderRadius(12)
-      .margin({ bottom: 16 })
+      .layoutWeight(1)
+      .backgroundColor('#F8F8F8')
+      .divider({
+        strokeWidth: 0.5,
+        color: '#E5E5E5',
+        startMargin: 12,
+        endMargin: 12
+      })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#F8F8F8')
+
+      // 自定义选择对话框
+      if (this.showDialog && this.currentDialogItem) {
+        Column() {
+          Column() {
+            Text(this.currentDialogItem.title)
+              .fontSize(18)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#333333')
+              .margin({ bottom: 16 })
+
+            Column() {
+              if (this.currentDialogItem.options) {
+                ForEach(this.currentDialogItem.options, (option: OptionItem) => {
+                  Row() {
+                    Text(option.label)
+                      .fontSize(16)
+                      .fontColor(this.currentDialogItem?.value === option.value ? '#4A90E2' : '#333333')
+                      .layoutWeight(1)
+
+                    if (this.currentDialogItem?.value === option.value) {
+                      Text('✓')
+                        .fontSize(16)
+                        .fontColor('#4A90E2')
+                    }
+                  }
+                  .width('100%')
+                  .height(48)
+                  .padding({ left: 16, right: 16 })
+                  .borderRadius(8)
+                  .backgroundColor(this.currentDialogItem?.value === option.value ? '#F0F7FF' : '#FFFFFF')
+                  .onClick(() => {
+                    if (this.currentDialogItem?.onChangeString) {
+                      this.currentDialogItem.onChangeString(option.value);
+                      this.showDialog = false;
+                      this.currentDialogItem = null;
+                    }
+                  })
+                })
+              }
+            }
+            .margin({ bottom: 16 })
+
+            Button('取消')
+              .width('100%')
+              .height(44)
+              .backgroundColor('#F5F5F5')
+              .fontColor('#666666')
+              .onClick(() => {
+                this.showDialog = false;
+                this.currentDialogItem = null;
+              })
+          }
+          .width('90%')
+          .padding(20)
+          .backgroundColor('#FFFFFF')
+          .borderRadius(16)
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('rgba(0, 0, 0, 0.4)')
+        .justifyContent(FlexAlign.Center)
+        .onClick(() => {
+          this.showDialog = false;
+          this.currentDialogItem = null;
+        })
+      }
     }
   }
 
   @Builder
-  buildToggleItem(title: string, description: string, value: boolean, onChange: (value: boolean) => void) {
+  groupHeader(title: string) {
+    Text(title)
+      .fontSize(14)
+      .fontColor('#666666')
+      .padding({ left: 12, top: 8, bottom: 8 })
+      .width('100%')
+      .backgroundColor('#F8F8F8')
+  }
+
+  @Builder
+  buildToggleItem(item: SettingItem) {
     Row() {
       Column() {
-        Text(title)
+        Text(item.title)
           .fontSize(16)
-          .fontColor('#2c3e50')
-          .alignSelf(ItemAlign.Start)
+          .fontColor('#333333')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-        Text(description)
-          .fontSize(12)
-          .fontColor('#7f8c8d')
-          .alignSelf(ItemAlign.Start)
-          .margin({ top: 2 })
+        if (item.description) {
+          Text(item.description)
+            .fontSize(14)
+            .fontColor('#666666')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ top: 2 })
+        }
       }
-      .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
 
-      Toggle({ type: ToggleType.Switch, isOn: value })
-        .onChange(onChange)
+      Toggle({ type: ToggleType.Switch, isOn: item.value as boolean })
+        .selectedColor('#4A90E2')
+        .onChange((isOn: boolean) => {
+          if (item.onChangeBoolean) {
+            item.onChangeBoolean(isOn);
+          }
+        })
     }
     .width('100%')
-    .margin({ bottom: 12 })
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder
-  buildRadioGroup(title: string, options: OptionItem[], currentValue: SelectionAlgorithm, onChange: (value: SelectionAlgorithm) => void) {
+  buildRadioItem(item: SettingItem) {
     Column() {
-      Text(title)
-        .fontSize(16)
-        .fontColor('#2c3e50')
-        .alignSelf(ItemAlign.Start)
-        .margin({ bottom: 12 })
+      Row() {
+        Column() {
+          Text(item.title)
+            .fontSize(16)
+            .fontColor('#333333')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-      ForEach(options, (option: OptionItem) => {
-        Row() {
-          Radio({ value: option.value.toString(), group: 'algorithm' })
-            .checked(currentValue === option.value)
-            .onChange((isChecked: boolean) => {
-              if (isChecked) {
-                onChange(option.value);
-              }
-            })
-
-          Text(option.label)
-            .fontSize(14)
-            .fontColor('#2c3e50')
-            .margin({ left: 8 })
+          if (item.description) {
+            Text(item.description)
+              .fontSize(14)
+              .fontColor('#666666')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .margin({ top: 2 })
+          }
         }
-        .width('100%')
-        .margin({ bottom: 8 })
-        .onClick(() => {
-          onChange(option.value);
-        })
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        Text(item.options?.find(opt => opt.value === item.value)?.label || '')
+          .fontSize(14)
+          .fontColor('#666666')
+          .margin({ right: 4 })
+
+        Text('›')
+          .fontSize(16)
+          .fontColor('#999999')
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .onClick(() => {
+        this.showRadioDialog(item);
       })
     }
-    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
-  buildQuoteSourceRadioGroup(title: string, options: QuoteSourceItem[], currentValue: QuoteSource, onChange: (value: QuoteSource) => void) {
-    Column() {
-      Text(title)
-        .fontSize(16)
-        .fontColor('#2c3e50')
-        .alignSelf(ItemAlign.Start)
-        .margin({ bottom: 12 })
+  buildNavigationItem(item: SettingItem) {
+    Row() {
+      Column() {
+        Text(item.title)
+          .fontSize(16)
+          .fontColor('#333333')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-      ForEach(options, (option: QuoteSourceItem) => {
-        Row() {
-          Radio({ value: option.value.toString(), group: 'quoteSource' })
-            .checked(currentValue === option.value)
-            .onChange((isChecked: boolean) => {
-              if (isChecked) {
-                onChange(option.value);
-              }
-            })
-
-          Text(option.label)
+        if (item.description) {
+          Text(item.description)
             .fontSize(14)
-            .fontColor('#2c3e50')
-            .margin({ left: 8 })
+            .fontColor('#666666')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ top: 2 })
         }
-        .width('100%')
-        .margin({ bottom: 8 })
-        .onClick(() => {
-          onChange(option.value);
-        })
-      })
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      Text('›')
+        .fontSize(16)
+        .fontColor('#999999')
     }
-    .alignItems(HorizontalAlign.Start)
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => {
+      if (item.onClick) {
+        item.onClick();
+      }
+    })
+  }
+
+  showRadioDialog(item: SettingItem) {
+    if (!item.options || !item.onChangeString) return;
+
+    this.currentDialogItem = item;
+    this.showDialog = true;
   }
 }

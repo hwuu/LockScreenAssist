@@ -52,16 +52,18 @@
   - 背景采用层叠混合技术，实现50%透明度的平滑过渡
   - 文字与背景动画精确同步
   - 首次播放快速启动（1秒后开始）
-  - 进度圈圈显示剩余时间，与背景动画同步淡入淡出
+  - 线性进度条显示播放进度，位于屏幕底部
 - **动态时间配置**：
   - 完整显示：根据文字长度动态调整（10字以下5秒，每增加1字增加0.2秒，最多30秒）
   - 文字动画：1秒淡入/淡出
   - 背景过渡：0.5秒
   - 保持时间：0.25秒
+  - 进度条淡出：1秒
 - **智能控制**：
   - 暂停时10倍速快进到下一个完整显示状态
   - 播放期间禁用手势，专注观看体验
-  - 进度圈圈实时显示播放进度
+  - 线性进度条实时显示播放进度
+  - 10倍速时动态调整进度更新频率
   - 加载动画提示操作状态
 
 ## ⚠️ 重要说明 - 壁纸设置限制
@@ -176,6 +178,9 @@
 7. **HintAnimationService**：提示动画服务（呼吸灯效果）
 8. **WallpaperUIService**：壁纸UI更新服务
 9. **QuotePageService**：名言页面管理服务
+10. **PreGeneratedWallpaperService**：壁纸配置预生成服务
+11. **BackgroundLifecycleService**：后台生命周期管理服务
+12. **LinearProgressComponent**：线性进度条组件
 
 ### 设计模式
 - **服务层架构**：清晰的分层设计
@@ -208,20 +213,25 @@ entry/src/main/ets/
 │   ├── HintAnimationService.ets  # 提示动画服务
 │   ├── WallpaperUIService.ets    # 壁纸UI更新服务
 │   ├── QuotePageService.ets      # 名言页面管理服务
-│   └── AppInitializationService.ets # 应用初始化服务
+│   ├── AppInitializationService.ets # 应用初始化服务
+│   ├── PreGeneratedWallpaperService.ets # 壁纸预生成服务
+│   └── BackgroundLifecycleService.ets # 后台生命周期管理
 ├── components/               # UI组件
 │   ├── TopBarComponent.ets  # 顶部工具栏组件（包含设置和播放按钮）
 │   ├── QuoteSwiperComponent.ets # 名言滑动组件
 │   ├── HintTextComponent.ets # 提示文本组件（呼吸灯效果）
 │   ├── LoadingOverlayComponent.ets # 加载遮罩组件
+│   ├── LinearProgressComponent.ets # 线性进度条组件
 │   └── PlayControlButton.ets # 独立播放按钮组件（备用）
 ├── pages/                     # 页面层
 │   ├── Index.ets             # 主页面
 │   └── Settings.ets          # 设置页面
 ├── entryability/             # 应用能力
 │   └── EntryAbility.ets      # 应用生命周期管理
-└── entrybackupability/       # 备份能力
-    └── EntryBackupAbility.ets # 数据备份恢复
+├── entrybackupability/       # 备份能力
+│   └── EntryBackupAbility.ets # 数据备份恢复
+└── types/                     # 类型定义
+    └── global.d.ts           # 全局类型定义
 ```
 
 ### 构建配置
@@ -300,7 +310,34 @@ A:
 
 ## 版本历史
 
-### v2.1.0 (当前版本) - 2025年1月
+### v2.3.0 (当前版本) - 2025年1月
+- ✅ **线性进度条**：替代圆形进度指示器
+  - 位于屏幕底部，与提示文字同一位置
+  - 50%屏幕宽度，水平居中
+  - 动画与文字完全同步（1000ms淡入/淡出）
+  - 背景和前景同步变化
+- ✅ **10倍速优化**：
+  - 修复进度条停在90%的问题
+  - 动态调整进度更新频率（10倍速时20ms更新一次）
+  - IDLE结束时强制发送100%进度
+- ✅ **启动体验优化**：
+  - 修复程序启动时文字闪烁问题
+  - 初始从纯黑背景平滑淡入
+  - 消除不必要的淡出淡入动画
+- ✅ **设计文档**：新增 DESIGN.md 完整状态转移图
+
+### v2.2.0 - 2025年1月
+- ✅ **性能优化**：实现100个壁纸配置预生成，启动时一次性计算完成
+- ✅ **后台管理**：应用进入后台自动处理
+  - 立即停止呼吸灯动画
+  - 10秒后自动暂停播放（如果正在播放）
+  - 返回前台智能恢复呼吸灯（仅在非播放状态）
+- ✅ **架构改进**：
+  - 新增 `PreGeneratedWallpaperService` 预生成服务
+  - 新增 `BackgroundLifecycleService` 后台生命周期管理
+  - 优化全局事件通信机制
+
+### v2.1.0 - 2025年1月
 - ✅ 根据文字长度动态调整播放时长
 - ✅ 进度圈圈显示播放进度，与背景动画同步淡入淡出
 - ✅ 修复保存图片功能，添加运行时权限请求

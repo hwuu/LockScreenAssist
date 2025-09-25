@@ -12,7 +12,7 @@ export struct TopBarComponent {
   onPauseClick: () => void = () => {};
 
   /**
-   * 生成按钮内部的圆弧路径
+   * 生成按钮内部的圆弧路径（已禁用，保留以备将来使用）
    * @param size 容器大小（宽高）
    * @param radius 圆弧半径
    */
@@ -53,13 +53,13 @@ export struct TopBarComponent {
   }
 
   build() {
-    Row() {
-      // 设置按钮（左侧）
+    Column() {
+      Row() {
+        // 设置按钮（左侧）
       Button() {
         Text('⋯')
           .fontSize(16)
           .fontColor(UI_CONSTANTS.WHITE_COLOR)
-          .fontFamily('Times New Roman')
       }
       .width(UI_CONSTANTS.BUTTON_SIZE)
       .height(UI_CONSTANTS.BUTTON_SIZE)
@@ -84,25 +84,25 @@ export struct TopBarComponent {
         } else if (this.isAutoPlaying) {
           // 暂停图标 - 使用Stack叠加进度圆圈和两个矩形
           Stack() {
-            // 进度圆圈（仅在IDLE状态且有进度时显示）
-            if (this.idleProgressPercentage > 0) {
-              Shape() {
-                Path()
-                  .commands(this.getArcPathForButton(
-                    UI_CONSTANTS.BUTTON_SIZE,  // 容器大小
-                    UI_CONSTANTS.BUTTON_SIZE * 0.5 * 0.8  // 圆弧半径
-                  ))
-                  .strokeWidth(2)
-                  .stroke('rgba(255, 255, 255, 0.8)')
-                  .fillOpacity(0)
-                  .strokeLineCap(LineCapStyle.Round)
-                  .width(UI_CONSTANTS.BUTTON_SIZE)
-                  .height(UI_CONSTANTS.BUTTON_SIZE)
-              }
-              .width(UI_CONSTANTS.BUTTON_SIZE)
-              .height(UI_CONSTANTS.BUTTON_SIZE)
-              .opacity(this.progressOpacity)  // 使用透明度属性实现淡入淡出
-            }
+            // 进度圆圈（已禁用）
+            // if (this.idleProgressPercentage > 0) {
+            //   Shape() {
+            //     Path()
+            //       .commands(this.getArcPathForButton(
+            //         UI_CONSTANTS.BUTTON_SIZE,  // 容器大小
+            //         UI_CONSTANTS.BUTTON_SIZE * 0.5 * 0.8  // 圆弧半径
+            //       ))
+            //       .strokeWidth(2)
+            //       .stroke('rgba(255, 255, 255, 0.8)')
+            //       .fillOpacity(0)
+            //       .strokeLineCap(LineCapStyle.Round)
+            //       .width(UI_CONSTANTS.BUTTON_SIZE)
+            //       .height(UI_CONSTANTS.BUTTON_SIZE)
+            //   }
+            //   .width(UI_CONSTANTS.BUTTON_SIZE)
+            //   .height(UI_CONSTANTS.BUTTON_SIZE)
+            //   .opacity(this.progressOpacity)  // 使用透明度属性实现淡入淡出
+            // }
 
             // 两个竖线（暂停图标）- 居中显示
             Row() {
@@ -146,15 +146,17 @@ export struct TopBarComponent {
           }
         }
       })
+      }
+      .width('100%')
+      .height(UI_CONSTANTS.TOP_BAR_HEIGHT)
+      .padding({
+        left: UI_CONSTANTS.CONTAINER_PADDING,
+        right: UI_CONSTANTS.CONTAINER_PADDING,
+        top: 10,
+        bottom: 10
+      })
     }
     .width('100%')
-    .height(UI_CONSTANTS.TOP_BAR_HEIGHT)
-    .padding({
-      left: UI_CONSTANTS.CONTAINER_PADDING,
-      right: UI_CONSTANTS.CONTAINER_PADDING,
-      top: 10,
-      bottom: 10
-    })
     .backgroundColor('rgba(0, 0, 0, 0)')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
     .position({ x: 0, y: 0 })

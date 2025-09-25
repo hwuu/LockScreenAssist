@@ -1,30 +1,28 @@
 import { Quote } from '../common/QuoteData';
-import { GeneratedWallpaper } from '../services/WallpaperService';
-import { WallpaperConfig } from '../common/ScheduleConfig';
+import { CardService, Card } from '../services/CardService';
+import { CardConfig } from '../common/ScheduleConfig';
 import router from '@ohos.router';
-import { QuoteDataSource } from '../common/QuoteDataSource';
+import { CardViewerDataSource } from '../common/CardViewerDataSource';
 import { AppInitializationService } from '../services/AppInitializationService';
-import { QuotePageService } from '../services/QuotePageService';
-import { WallpaperUIService } from '../services/WallpaperUIService';
+// CardPageService 和 CardUIService 功能已合并到 CardService
 import { HintAnimationService } from '../services/HintAnimationService';
 import { TextLayoutResult } from '../common/TextLayoutTypes';
 import { UI_CONSTANTS } from '../common/UIConstants';
 import { TopBarComponent } from '../components/TopBarComponent';
 import { HintTextComponent } from '../components/HintTextComponent';
 import { LoadingOverlayComponent } from '../components/LoadingOverlayComponent';
-import { QuoteSwiperComponent } from '../components/QuoteSwiperComponent';
+import { LinearProgressComponent } from '../components/LinearProgressComponent';
+import { CardViewerComponent } from '../components/CardViewerComponent';
 import { AutoPlayService, PlayState } from '../services/AutoPlayService';
 import common from '@ohos.app.ability.common';
 @Entry
 @Component
 struct Index {
-  @State currentQuote: Quote | null = null;
-  @State currentWallpaper: GeneratedWallpaper | null = null;
+  @State currentCard: Card | null = null;
   @State isLoading: boolean = false;
-  @State previewBackground: string = '';
+  @StorageLink('quoteSourceChanged') @Watch('onQuoteSourceChanged') quoteSourceChanged: boolean = false;
   @State previewMode: 'current' | 'recommended' = 'current';
-  @State recommendedQuote: Quote | null = null;
-  @State recommendedWallpaper: GeneratedWallpaper | null = null;
+  @State recommendedCard: Card | null = null;
   @State usedRecommendations: Set<string> = new Set();
 
   // 自动播放相关状态
@@ -42,32 +40,37 @@ struct Index {
   @State idleDuration: number = 0;  // IDLE总时长
   @State progressOpacity: number = 1;  // 进度圆圈透明度
 
+  // 线性进度条状态
+  @State linearProgressWidth: number = 0;      // 线性进度条宽度 (0-100)
+  @State linearProgressOpacity: number = 0;    // 线性进度条透明度
+  @State showLinearProgress: boolean = true;   // 是否启用线性进度条
+
   // 时间配置
   @State displayDuration: number = 8000;   // 完整显示时间（现在仅作为参考，实际根据文字长度动态计算）
   @State textFadeDuration: number = 1000;   // 文字淡入淡出时间
   @State bgFadeDuration: number = 500;     // 背景淡入淡出时间
   @State holdDuration: number = 250;       // 保持时间
 
-  @State config: WallpaperConfig | null = null;
+  @State config: CardConfig | null = null;
   @State showSaveDialog: boolean = false;
   @State screenRatio: number = UI_CONSTANTS.DEFAULT_SCREEN_RATIO;
   @State screenWidth: number = 0;
   @State screenHeight: number = 0;
+  @State previewBackground: string = '#000000';  // 初始为纯黑色
   @State setLockScreen: boolean = false;
   @State saveToGallery: boolean = true;
   @State isApplying: boolean = false;
   @State hintOpacity: number = 0;
-  @State contentOpacity: number = 1;
+  @State contentOpacity: number = 0;  // 初始为0，避免闪烁
   @State isTransitioning: boolean = false;
+  @State isInitialLoad: boolean = true;  // 标记是否是初次加载
 
-  @State currentPageIndex: number = 0;
-  @Provide quoteDataSource: QuoteDataSource = new QuoteDataSource();
-  @State wallpaperList: (GeneratedWallpaper | null)[] = [];
+  @State currentCardIndex: number = 0;
+  @Provide cardViewerDataSource: CardViewerDataSource = new CardViewerDataSource();
   @State optimizedFontSizes: number[] = [];
 
   private appInitService: AppInitializationService | null = null;
-  private quotePageService: QuotePageService | null = null;
-  private wallpaperUIService: WallpaperUIService | null = null;
+  // CardPageService 功能已集成到 CardService
   private hintAnimationService: HintAnimationService | null = null;
   private autoPlayService: AutoPlayService | null = null;
 
@@ -75,13 +78,120 @@ struct Index {
     // 清理定时器和服务
     this.autoPlayService?.stop();
     this.hintAnimationService?.stopHintTimer();
+
+    // 清理全局事件处理器
+    this.unregisterBackgroundEventHandler();
+
     console.log('Index aboutToDisappear: 已清理所有定时器');
   }
 
+  async onPageShow() {
+    console.log('Index onPageShow - 页面显示');
+    console.log('Index onPageShow - quoteSourceChanged值:', this.quoteSourceChanged);
+
+    // 检查是否需要重新加载（名言来源变化）
+    if (this.quoteSourceChanged) {
+      console.log('Index onPageShow - 检测到名言来源变化，重新加载...');
+
+      // 清除标记
+      this.quoteSourceChanged = false;
+      AppStorage.setOrCreate('quoteSourceChanged', false);
+
+      // 重新加载名言
+      await this.reloadQuotesWithNewSource();
+    }
+  }
+
+  /**
+   * 监听名言源变化
+   */
+  onQuoteSourceChanged() {
+    console.log('Index - 监听到quoteSourceChanged变化:', this.quoteSourceChanged);
+    if (this.quoteSourceChanged) {
+      console.log('Index - 准备重新加载名言...');
+      // 延迟执行，确保页面已经显示
+      setTimeout(() => {
+        this.quoteSourceChanged = false;
+        AppStorage.setOrCreate('quoteSourceChanged', false);
+        this.reloadQuotesWithNewSource();
+      }, 100);
+    }
+  }
+
+  /**
+   * 重新加载名言（当名言来源变化时）
+   */
+  async reloadQuotesWithNewSource() {
+    console.log('开始重新加载名言...');
+
+    // 停止自动播放
+    if (this.isAutoPlaying) {
+      this.completeStopping();
+    }
+
+    // 显示加载动画
+    this.isLoading = true;
+
+    try {
+      // 清理现有的名言数据
+      // 重要：不要创建新实例，而是清空现有数据源
+      // 否则Swiper组件可能仍然绑定到旧实例
+      this.cardViewerDataSource.clear();
+      this.optimizedFontSizes = [];
+
+      // 重要：清理CardService中的已使用名言缓存
+      // 否则新源的名言可能因为文本相同而被错误地排除
+      CardService.clearUsedQuoteTexts();
+      console.log('已清理现有名言数据和缓存');
+
+      // 重新初始化应用（与aboutToAppear的逻辑相同）
+      const context = getContext(this) as common.UIAbilityContext;
+      const initResult = await this.appInitService?.initializeApp(context);
+
+      if (initResult) {
+        // 更新状态
+        this.config = initResult.config;
+        this.currentCard = initResult.currentCard;
+
+        console.log('重新加载后的名言:', this.currentCard?.quote?.text || 'null');
+
+        // 重新初始化名言列表
+        const quoteResult = await CardService.initializeQuoteList({
+          currentCard: this.currentCard,
+          cardViewerDataSource: this.cardViewerDataSource,
+          optimizedFontSizes: this.optimizedFontSizes
+        });
+
+        if (quoteResult) {
+          this.currentCard = quoteResult.card;
+        }
+
+        // 重置到第一页
+        this.currentCardIndex = 0;
+
+        // 更新预览
+        await this.updatePreview();
+        await this.updateBackgroundForCurrentCard(this.currentCardIndex);
+
+        console.log('名言重新加载完成');
+      }
+    } catch (error) {
+      console.error('重新加载名言失败:', error);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
   async aboutToAppear() {
-    console.log('CLAUDE_DEBUG: Index.aboutToAppear 开始');
+
+    // 初始化AppStorage标记
+    AppStorage.setOrCreate('quoteSourceChanged', false);
+
+    // 注册全局后台事件处理器
+    this.registerBackgroundEventHandler();
+
     this.appInitService = new AppInitializationService();
-    this.wallpaperUIService = new WallpaperUIService();
+    // CardUIService 使用静态方法，不需要实例化
 
     this.hintAnimationService = new HintAnimationService((opacity: number, duration: number) => {
       animateTo({
@@ -92,40 +202,35 @@ struct Index {
       });
     });
     const context = getContext(this) as common.UIAbilityContext;
-    console.log('CLAUDE_DEBUG: Index 获取到context, 开始初始化应用');
     const initResult = await this.appInitService.initializeApp(context);
-    console.log('CLAUDE_DEBUG: Index 应用初始化完成, initResult:', {
-      hasQuote: !!initResult.currentQuote,
-      hasWallpaper: !!initResult.currentWallpaper,
-      screenInfo: initResult.screenInfo
-    });
 
     this.screenWidth = initResult.screenInfo.width;
     this.screenHeight = initResult.screenInfo.height;
     this.screenRatio = initResult.screenInfo.ratio;
     this.config = initResult.config;
-    this.currentQuote = initResult.currentQuote;
-    this.currentWallpaper = initResult.currentWallpaper;
+    this.currentCard = initResult.currentCard;
 
-    console.log('CLAUDE_DEBUG: Index 当前名言:', this.currentQuote?.text || 'null');
+    // 开始加载 card list 时显示加载图标
+    this.isLoading = true;
 
-    this.quotePageService = new QuotePageService(this.screenWidth, this.screenHeight);
-    console.log('CLAUDE_DEBUG: Index 开始初始化QuoteList, currentQuote:', this.currentQuote?.text || 'null');
-    const quoteResult = await this.quotePageService.initializeQuoteList({
-      currentQuote: this.currentQuote,
-      currentWallpaper: this.currentWallpaper,
-      quoteDataSource: this.quoteDataSource,
-      wallpaperList: this.wallpaperList,
-      optimizedFontSizes: this.optimizedFontSizes
-    });
+    try {
+      // 初始化 CardService 的页面服务功能
+      CardService.initPageService(this.screenWidth, this.screenHeight);
+      const quoteResult = await CardService.initializeQuoteList({
+        currentCard: this.currentCard,
+        cardViewerDataSource: this.cardViewerDataSource,
+        optimizedFontSizes: this.optimizedFontSizes
+      });
 
-    this.currentQuote = quoteResult.quote;
-    this.currentWallpaper = quoteResult.wallpaper;
-    console.log('CLAUDE_DEBUG: Index QuoteList初始化完成, 最终名言:', this.currentQuote?.text || 'null');
+      this.currentCard = quoteResult.card;
 
-    await this.updatePreview();
-    await this.updateBackgroundForCurrentPage(this.currentPageIndex);
-    this.hintAnimationService?.startHintTimer();
+      await this.updatePreview();
+      await this.updateBackgroundForCurrentCard(this.currentCardIndex);
+      this.hintAnimationService?.startHintTimer();
+    } finally {
+      // 加载完成后隐藏加载图标
+      this.isLoading = false;
+    }
 
     // 初始化自动播放服务
     this.initAutoPlayService();
@@ -157,10 +262,28 @@ struct Index {
             this.idleProgressPercentage = 0;
           }
 
+          // 独立处理线性进度条显示逻辑
+          if (this.showLinearProgress) {
+            this.updateLinearProgressForState(state);
+          }
+
           // 状态变化时触发对应动画
           switch (state) {
             case PlayState.TEXT_FADE_OUT:
               this.executeTextFadeOutAnimation();
+              // TEXT_FADE_OUT 开始时，进度条同步淡出（与文字淡出时长一致）
+              if (this.showLinearProgress && this.linearProgressOpacity > 0) {
+                const duration = this.textFadeDuration / this.currentSpeedUpFactor;
+                animateTo({
+                  duration: duration,  // 与文字淡出时长一致
+                  curve: Curve.EaseOut
+                }, () => {
+                  this.linearProgressOpacity = 0;
+                });
+              }
+              break;
+            case PlayState.TEXT_OUT_HOLD:
+              // 进度条已在TEXT_FADE_OUT时处理
               break;
             case PlayState.BG_FADE_OUT:
               this.executeBgFadeOutAnimation();
@@ -172,6 +295,7 @@ struct Index {
               this.executeTextFadeInAnimation();
               // 文字淡入时准备真正的下一页背景
               this.prepareNextBackground();
+              // TEXT_FADE_IN 开始时不再处理进度条，改为在IDLE时根据播放状态处理
               break;
           }
         },
@@ -192,7 +316,7 @@ struct Index {
           // 停止完成，调用完成停止流程
           this.completeStopping();
         },
-        getCurrentTextLength: () => {
+        getCurrentTextLength: (): number => {
           // 获取当前显示的名言文字长度
           const currentQuote = this.getCurrentQuote();
           if (currentQuote?.text) {
@@ -201,10 +325,16 @@ struct Index {
           }
           return 0;
         },
-        onIdleProgress: (percentage: number, duration: number) => {
+        onIdleProgress: (percentage: number, duration: number): void => {
           // 更新IDLE进度
           this.idleProgressPercentage = percentage;
           this.idleDuration = duration;
+
+          // 独立更新线性进度条
+          if (this.showLinearProgress) {
+            this.linearProgressWidth = percentage;
+            // 进度条达到100%后保持显示，等待状态变化时再处理淡出
+          }
         }
       }
     );
@@ -217,22 +347,16 @@ struct Index {
 
 
   getCurrentQuote(): Quote | null {
-    const totalCount = this.quoteDataSource.totalCount();
-    console.log(`CLAUDE_DEBUG: Index.getCurrentQuote pageIndex=${this.currentPageIndex}, totalCount=${totalCount}`);
-    if (totalCount > this.currentPageIndex) {
-      const quote = this.quoteDataSource.getData(this.currentPageIndex);
-      console.log('CLAUDE_DEBUG: Index.getCurrentQuote 从DataSource获取:', quote?.text || 'null');
-      return quote;
-    }
-    console.log('CLAUDE_DEBUG: Index.getCurrentQuote 使用currentQuote:', this.currentQuote?.text || 'null');
-    return this.currentQuote;
+    const currentCard = this.getCurrentCard();
+    return currentCard?.quote || null;
   }
 
-  getCurrentWallpaper(): GeneratedWallpaper | null {
-    if (this.wallpaperList.length > this.currentPageIndex) {
-      return this.wallpaperList[this.currentPageIndex];
+  getCurrentCard(): Card | null {
+    const totalCount = this.cardViewerDataSource.totalCount();
+    if (totalCount > this.currentCardIndex) {
+      return this.cardViewerDataSource.getData(this.currentCardIndex);
     }
-    return this.currentWallpaper;
+    return this.currentCard;
   }
 
 
@@ -240,29 +364,46 @@ struct Index {
     try {
       this.isTransitioning = true;
 
-      const currentWallpaper = this.getCurrentWallpaper();
-      const newBackground = await this.wallpaperUIService?.updatePreview(currentWallpaper) || '#2c3e50';
+      const currentCard = this.getCurrentCard();
+      console.log(`updatePreview - currentCardIndex: ${this.currentCardIndex}, card:`, currentCard?.quote?.text, currentCard?.style?.fontSize);
+      const newBackground = CardService.getCardBackgroundColor(currentCard);
 
-      animateTo({
-        duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
-        curve: Curve.EaseInOut
-      }, () => {
-        this.contentOpacity = 0;
-      });
-
-      setTimeout(() => {
+      if (this.isInitialLoad) {
+        // 初次加载时，直接设置背景并渐入
+        this.previewBackground = newBackground;
+        animateTo({
+          duration: UI_CONSTANTS.ANIMATION_DURATION_FADE,
+          curve: Curve.EaseInOut
+        }, () => {
+          this.contentOpacity = 1;
+        });
+        this.isInitialLoad = false;
+        setTimeout(() => {
+          this.isTransitioning = false;
+        }, UI_CONSTANTS.ANIMATION_DURATION_FADE);
+      } else {
+        // 非初次加载，执行淡出淡入动画
         animateTo({
           duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
           curve: Curve.EaseInOut
         }, () => {
-          this.previewBackground = newBackground;
-          this.contentOpacity = 1;
+          this.contentOpacity = 0;
         });
 
         setTimeout(() => {
-          this.isTransitioning = false;
+          animateTo({
+            duration: UI_CONSTANTS.ANIMATION_DURATION_SHORT,
+            curve: Curve.EaseInOut
+          }, () => {
+            this.previewBackground = newBackground;
+            this.contentOpacity = 1;
+          });
+
+          setTimeout(() => {
+            this.isTransitioning = false;
+          }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
         }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
-      }, UI_CONSTANTS.ANIMATION_DURATION_SHORT);
+      }
 
       setTimeout(() => {
         console.log('Preview updated:', this.previewBackground);
@@ -284,10 +425,94 @@ struct Index {
   }
 
   /**
+   * 注册全局后台事件处理器
+   */
+  private registerBackgroundEventHandler(): void {
+    // 创建全局事件处理器对象
+    globalThis.backgroundEventHandler = {
+      pauseAutoPlay: () => {
+        console.log('Index: 收到后台暂停播放请求');
+        if (this.isAutoPlaying && this.autoPlayService) {
+          this.pauseAutoPlay();
+        }
+      },
+      stopBreathing: () => {
+        console.log('Index: 收到后台停止呼吸灯请求');
+        this.hintAnimationService?.stopBreathing();
+        // 立即设置透明度为0
+        animateTo({
+          duration: 300,
+          curve: Curve.EaseOut
+        }, () => {
+          this.hintOpacity = 0;
+        });
+      },
+      resumeBreathing: () => {
+        console.log('Index: 收到前台恢复呼吸灯请求');
+        // 只有在不播放的情况下才恢复呼吸灯
+        if (!this.isAutoPlaying) {
+          this.hintAnimationService?.startHintTimer();
+        }
+      },
+      isAutoPlaying: () => {
+        return this.isAutoPlaying;
+      }
+    };
+  }
+
+  /**
+   * 清理全局后台事件处理器
+   */
+  private unregisterBackgroundEventHandler(): void {
+    if (globalThis.backgroundEventHandler) {
+      globalThis.backgroundEventHandler = null;
+    }
+  }
+
+  /**
+   * 根据播放状态更新线性进度条
+   */
+  private updateLinearProgressForState(state: PlayState): void {
+    if (state === PlayState.IDLE) {
+      if (this.isAutoPlaying) {
+        // IDLE状态且正在自动播放
+        // 如果进度条未显示，则渐入（与文字淡入时长一致）
+        if (this.linearProgressOpacity <= 0) {
+          this.linearProgressWidth = 0;
+          const duration = this.textFadeDuration / this.currentSpeedUpFactor;
+          animateTo({
+            duration: duration,  // 与文字淡入时长一致
+            curve: Curve.EaseIn
+          }, () => {
+            this.linearProgressOpacity = 0.3;
+          });
+        }
+        // 进度条已显示，继续更新进度（通过onIdleProgress）
+      } else {
+        // IDLE状态但不在自动播放，进度条应渐出
+        if (this.linearProgressOpacity > 0) {
+          const duration = this.textFadeDuration / this.currentSpeedUpFactor;
+          animateTo({
+            duration: duration,  // 与文字淡出时长一致
+            curve: Curve.EaseOut
+          }, () => {
+            this.linearProgressOpacity = 0;
+          });
+        }
+      }
+    } else if (state === PlayState.BG_FADE_IN) {
+      // 进入背景淡入时，确保进度条完全透明
+      this.linearProgressWidth = 0;
+      this.linearProgressOpacity = 0;
+    }
+    // 移除了其他状态时立即隐藏的逻辑，改为在 TEXT_FADE_OUT 时处理
+  }
+
+  /**
    * 开始自动播放
    */
   async startAutoPlay() {
-    if (this.quoteDataSource.totalCount() <= 1) {
+    if (this.cardViewerDataSource.totalCount() <= 1) {
       console.log('只有一页，无法自动播放');
       return;
     }
@@ -345,6 +570,12 @@ struct Index {
     this.currentSpeedUpFactor = 1;  // 重置速度因子
     this.idleProgressPercentage = 0;  // 重置进度
     this.autoPlayService?.stop();
+
+    // 重置线性进度条
+    if (this.showLinearProgress) {
+      this.linearProgressWidth = 0;
+      this.linearProgressOpacity = 0;
+    }
 
     // 恢复 Hint 定时器
     this.hintAnimationService?.startHintTimer();
@@ -415,7 +646,7 @@ struct Index {
 
     const duration = this.textFadeDuration / this.currentSpeedUpFactor;
     console.log(`执行文字淡入动画，时长: ${duration}ms (${this.currentSpeedUpFactor}倍速)`);
-    console.log('当前页索引:', this.currentPageIndex);
+    console.log('当前页索引:', this.currentCardIndex);
     animateTo({
       duration: duration,
       curve: Curve.EaseIn
@@ -428,20 +659,20 @@ struct Index {
    * 自动切换到下一页
    */
   private async autoPlayNext() {
-    const totalCount = this.quoteDataSource.totalCount();
+    const totalCount = this.cardViewerDataSource.totalCount();
     if (totalCount <= 1) return;
 
-    let nextIndex = this.currentPageIndex + 1;
+    let nextIndex = this.currentCardIndex + 1;
 
     // 到达最后一页时循环到第一页
     if (nextIndex >= totalCount) {
       nextIndex = 0;
     }
 
-    console.log(`自动切换: ${this.currentPageIndex} -> ${nextIndex}`);
+    console.log(`自动切换: ${this.currentCardIndex} -> ${nextIndex}`);
 
     // 切换页面
-    this.currentPageIndex = nextIndex;
+    this.currentCardIndex = nextIndex;
 
     // 交换背景：下一页变成当前页，当前页变成上一页
     const tempBackground = this.currentBackground;
@@ -458,15 +689,15 @@ struct Index {
    * 准备下一页的背景
    */
   private async prepareNextBackground() {
-    const totalCount = this.quoteDataSource.totalCount();
-    const nextIndex = (this.currentPageIndex + 1) % totalCount;
+    const totalCount = this.cardViewerDataSource.totalCount();
+    const nextIndex = (this.currentCardIndex + 1) % totalCount;
 
     console.log(`准备下一页背景，nextIndex: ${nextIndex}, totalCount: ${totalCount}`);
 
-    const nextWallpaper = this.wallpaperList[nextIndex];
-    if (nextWallpaper) {
-      // 使用 WallpaperUIService 获取正确格式的背景
-      this.nextBackground = await this.wallpaperUIService?.updatePreview(nextWallpaper) || UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
+    const nextCard: Card | null = this.cardViewerDataSource.getData(nextIndex);
+    if (nextCard) {
+      // 使用 CardService 获取正确格式的背景
+      this.nextBackground = CardService.getCardBackgroundColor(nextCard);
       console.log(`下一页背景准备完成: ${this.nextBackground}`);
     } else {
       this.nextBackground = UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
@@ -475,45 +706,32 @@ struct Index {
   }
 
   onScrollIndex(firstIndex: number) {
-    console.log('CLAUDE_DEBUG: Index.onScrollIndex 从', this.currentPageIndex, '到', firstIndex);
-    this.currentPageIndex = firstIndex;
-    console.log('CLAUDE_DEBUG: Index.onScrollIndex 更新后 currentPageIndex:', this.currentPageIndex);
-    this.loadMoreIfNeeded(firstIndex);
+    this.currentCardIndex = firstIndex;
   }
 
-  async loadMoreIfNeeded(currentIndex: number) {
-    if (this.quotePageService) {
-      await this.quotePageService.loadMoreIfNeeded({
-        currentIndex: currentIndex,
-        quoteDataSource: this.quoteDataSource,
-        wallpaperList: this.wallpaperList,
-        optimizedFontSizes: this.optimizedFontSizes
-      });
-    }
-  }
 
-  async updateBackgroundForCurrentPage(index: number) {
+  // 更新指定卡片的背景（滑动时调用）
+  async updateBackgroundForCurrentCard(index: number) {
     try {
-      console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage index:', index, 'wallpaperList.length:', this.wallpaperList.length);
-      const newBackground = await this.wallpaperUIService?.updateBackgroundForCurrentPage(index, this.wallpaperList) || UI_CONSTANTS.DEFAULT_BACKGROUND_COLOR;
+      const card: Card | null = this.cardViewerDataSource.getData(index);
+      const newBackground = CardService.getCardBackgroundColor(card);
 
-      console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage 新背景色:', newBackground);
+      // 滑动切换时的简单背景更新，不需要淡出淡入
       animateTo({
         duration: 300,
         curve: Curve.EaseInOut
       }, () => {
         this.previewBackground = newBackground;
-        console.log('CLAUDE_DEBUG: Index.updateBackgroundForCurrentPage 背景色已更新到:', this.previewBackground);
       });
 
-      console.log('Background updated for page:', index, newBackground);
+      console.log('Background updated for card:', index, newBackground);
     } catch (error) {
-      console.error('Failed to update background for current page:', error);
+      console.error('Failed to update background for card:', error);
     }
   }
 
 
-  async applyWallpaperOptions() {
+  async applyCardOptions() {
     if (!this.setLockScreen && !this.saveToGallery) {
       this.showSaveDialog = false;
       return;
@@ -523,8 +741,8 @@ struct Index {
 
     try {
       const context = getContext(this) as common.UIAbilityContext;
-      const result = await this.wallpaperUIService?.applyWallpaperOptions({
-        setLockScreen: this.setLockScreen,
+      const result = await CardService.exportCard({
+        setAsLockScreen: this.setLockScreen,
         saveToGallery: this.saveToGallery,
         context: context
       });
@@ -548,15 +766,7 @@ struct Index {
    * @returns 格式化后的文本布局结果
    */
   formatQuoteText(text: string, fontSize?: number, containerWidth?: number): TextLayoutResult {
-    if (this.quotePageService) {
-      return this.quotePageService.formatQuoteText(text, fontSize, containerWidth);
-    }
-
-    return {
-      text: text,
-      fontSize: fontSize || 24,
-      lines: [text]
-    };
+    return CardService.formatQuoteText(text, fontSize, containerWidth);
   }
 
 
@@ -567,14 +777,13 @@ struct Index {
 
       // 内容层（使用文字透明度控制）
       Column() {
-        QuoteSwiperComponent({
-          currentPageIndex: $currentPageIndex,
-          wallpaperList: this.wallpaperList,
-          optimizedFontSizes: this.optimizedFontSizes,
+        CardViewerComponent({
+          currentCardIndex: $currentCardIndex,
+          optimizedFontSizes: $optimizedFontSizes,
           contentOpacity: this.isAutoPlaying ? this.textOpacity : this.contentOpacity,
           formatQuoteText: this.formatQuoteText.bind(this),
           onScrollIndex: this.onScrollIndex.bind(this),
-          updateBackgroundForCurrentPage: this.updateBackgroundForCurrentPage.bind(this),
+          updateBackgroundForCurrentCard: this.updateBackgroundForCurrentCard.bind(this),
           resetHintTimer: () => this.hintAnimationService?.resetHintTimer(),
           swipeEnabled: !this.isAutoPlaying  // 播放时禁用滑动
         })
@@ -591,6 +800,13 @@ struct Index {
         onPauseClick: (): void => this.pauseAutoPlay()
       })
       HintTextComponent({ hintOpacity: this.isAutoPlaying ? 0 : this.hintOpacity })
+
+      // 线性进度条（与hint相同位置）
+      LinearProgressComponent({
+        progressWidth: this.linearProgressWidth,
+        progressOpacity: this.linearProgressOpacity,
+        isEnabled: this.showLinearProgress
+      })
 
       // 透明覆盖层，专门处理长按手势
       if (!this.isAutoPlaying) {
@@ -614,7 +830,7 @@ struct Index {
       }
 
       LoadingOverlayComponent({ isLoading: this.isLoading })
-      this.buildPureWallpaper()
+      this.buildExportableCard()
     }
     .width('100%')
     .height('100%')
@@ -670,7 +886,7 @@ struct Index {
         Column() {
           Column() {
             Row() {
-              Checkbox({ name: 'setLockScreen', group: 'wallpaperOptions' })
+              Checkbox({ name: 'setLockScreen', group: 'cardOptions' })
                 .select(this.setLockScreen)
                 .selectedColor('#5b9bd5')
                 .onChange((value: boolean) => {
@@ -696,7 +912,7 @@ struct Index {
           }
 
           Row() {
-            Checkbox({ name: 'saveToGallery', group: 'wallpaperOptions' })
+            Checkbox({ name: 'saveToGallery', group: 'cardOptions' })
               .select(this.saveToGallery)
               .selectedColor('#5b9bd5')
               .onChange((value: boolean) => {
@@ -756,7 +972,7 @@ struct Index {
           .margin({ left: '10%' })
           .enabled(!this.isApplying && (this.setLockScreen || this.saveToGallery))
           .onClick(async () => {
-            await this.applyWallpaperOptions();
+            await this.applyCardOptions();
           })
         }
         .width('100%')
@@ -786,14 +1002,15 @@ struct Index {
   }
 
   @Builder
-  buildPureWallpaper() {
+  // 构建可导出的卡片视图（用于截图）
+  buildExportableCard() {
     // 为了支持截图，需要一个在屏幕内但不可见的元素
     // 使用visibility(Visibility.Hidden)会保留渲染但不显示
     Column() {
       if (this.getCurrentQuote()) {
         Text(this.formatQuoteText(this.getCurrentQuote()?.text || '').text)
-          .fontSize(this.optimizedFontSizes[this.currentPageIndex] || (this.getCurrentWallpaper()?.style.fontSize) || UI_CONSTANTS.DEFAULT_FONT_SIZE)
-          .fontColor((this.getCurrentWallpaper()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+          .fontSize(this.optimizedFontSizes[this.currentCardIndex] || this.getCurrentCard()?.style.fontSize || UI_CONSTANTS.DEFAULT_FONT_SIZE)
+          .fontColor(this.getCurrentCard()?.style.textColor || UI_CONSTANTS.TEXT_GRAY_COLOR)
           .textAlign(TextAlign.Center)
           .width('100%')
           .margin({ bottom: UI_CONSTANTS.TEXT_BOTTOM_MARGIN })
@@ -802,7 +1019,7 @@ struct Index {
 
         Text(`—— ${this.getCurrentQuote()?.author || ''}${(this.getCurrentQuote()?.author && this.getCurrentQuote()?.source) ? ' · ' : ''}${this.getCurrentQuote()?.source || ''}`)
           .fontSize(UI_CONSTANTS.AUTHOR_FONT_SIZE)
-          .fontColor((this.getCurrentWallpaper()?.style.textColor) || UI_CONSTANTS.TEXT_GRAY_COLOR)
+          .fontColor(this.getCurrentCard()?.style.textColor || UI_CONSTANTS.TEXT_GRAY_COLOR)
           .opacity(UI_CONSTANTS.AUTHOR_TEXT_OPACITY)
           .textAlign(TextAlign.Center)
           .width('100%')
@@ -815,7 +1032,7 @@ struct Index {
     .height('100%')
     .backgroundColor(this.previewBackground || UI_CONSTANTS.FALLBACK_BACKGROUND_COLOR)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .id('pureWallpaperArea')
+    .id('exportableCardArea')
     .position({ x: 0, y: 0 })  // 保持在屏幕内以便截图
     .visibility(Visibility.Hidden)  // 使用visibility隐藏但保留渲染
     .hitTestBehavior(HitTestMode.None)  // 不接收触摸事件

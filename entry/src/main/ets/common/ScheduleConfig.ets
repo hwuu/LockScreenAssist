@@ -5,7 +5,8 @@ export enum SelectionAlgorithm {
   SMART = "smart"                         // 智能选择（综合考虑时间、季节、天气等）
 }
 
-export interface WallpaperConfig {
+// 卡片配置接口
+export interface CardConfig {
   selectionAlgorithm: SelectionAlgorithm;
   autoOptimizeFont: boolean;
   autoOptimizeBackground: boolean;
@@ -14,8 +15,8 @@ export interface WallpaperConfig {
 }
 
 export class ScheduleConfig {
-  private static readonly CONFIG_KEY = "wallpaper_config";
-  private static defaultConfig: WallpaperConfig = {
+  private static readonly CONFIG_KEY = "card_config";
+  private static defaultConfig: CardConfig = {
     selectionAlgorithm: SelectionAlgorithm.SMART,
     autoOptimizeFont: true,
     autoOptimizeBackground: true,
@@ -23,7 +24,7 @@ export class ScheduleConfig {
     enableWeatherAdjustment: false
   };
 
-  static async getConfig(): Promise<WallpaperConfig> {
+  static async getConfig(): Promise<CardConfig> {
     try {
       // 在HarmonyOS中，应该使用Preferences API来存储配置
       // 这里先用模拟实现
@@ -34,7 +35,7 @@ export class ScheduleConfig {
     }
   }
 
-  static async saveConfig(config: WallpaperConfig): Promise<void> {
+  static async saveConfig(config: CardConfig): Promise<void> {
     try {
       // 在HarmonyOS中，应该使用Preferences API来存储配置
       // 这里先用模拟实现
